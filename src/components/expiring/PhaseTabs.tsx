@@ -1,23 +1,50 @@
-'use client';
+'use client'
 
-type Props = {
-  value: 'all' | 'grace' | 'pending';
-  onChange: (value: 'all' | 'grace' | 'pending') => void;
-};
+import { useRouter, usePathname, useSearchParams } from 'next/navigation'
+import { ExpiryPhase } from '@/types/ens'
+import DomainsTable from './DomainsTable'
 
-export default function PhaseTabs({ value, onChange }: Props) {
-  const tabs: Props['value'][] = ['all', 'grace', 'pending'];
+interface Props {
+  activePhase: ExpiryPhase
+  minLength?: number
+  maxLength?: number
+}
+
+const TABS: { label: string; value: ExpiryPhase }[] = [
+  { label: 'Grace Period', value: 'grace' },
+  { label: 'Premium Auction', value: 'premium' },
+  { label: 'Available', value: 'available' },
+]
+
+export function PhaseTabs({ activePhase, minLength, maxLength }: Props) {
+  const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
+
+  function setPhase(phase: ExpiryPhase) {
+    const params = new URLSearchParams(searchParams.toString())
+    params.set('phase', phase)
+    router.push(`${pathname}?${params.toString()}`)
+  }
+
   return (
-    <div className="flex gap-2">
-      {tabs.map((tab) => (
-        <button
-          key={tab}
-          onClick={() => onChange(tab)}
-          className={`rounded px-3 py-1 text-sm ${value === tab ? 'bg-indigo-500 text-white' : 'bg-slate-800 text-slate-300'}`}
-        >
-          {tab}
-        </button>
-      ))}
+    <div>
+      <div className="flex border-b border-terminal-border mb-6">
+        {TABS.map((tab) => (
+          <button
+            key={tab.value}
+            onClick={() => setPhase(tab.value)}
+            className={`px-6 py-3 text-sm transition-colors ${
+              activePhase === tab.value
+                ? 'border-b-2 border-terminal-accent text-terminal-accent'
+                : 'text-terminal-muted hover:text-terminal-text'
+            }`}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+      <DomainsTable phase={activePhase} minLength={minLength} maxLength={maxLength} />
     </div>
-  );
+  )
 }
