@@ -58,7 +58,6 @@ export default function DomainsTable({
     sortDirection,
   })
 
-  // Infinite scroll
   useEffect(() => {
     const observer = new IntersectionObserver(
       (entries) => {
@@ -98,20 +97,18 @@ export default function DomainsTable({
 
   return (
     <div>
-      {/* Count */}
       <div className="rounded border border-terminal-border bg-terminal-surface/30 px-3 py-2 text-xs text-terminal-muted mb-3">
         Showing {domains.length.toLocaleString()} domains
         {hasNextPage && ' — scroll for more'}
       </div>
 
-      {/* Mobile cards — visible below md */}
+      {/* Mobile cards */}
       <div className="space-y-2 md:hidden">
         {domains.map((domain) => (
           <div
             key={domain.id}
             className="rounded-lg border border-terminal-border bg-terminal-surface p-3 animate-in"
           >
-            {/* Row 1: name + length */}
             <div className="flex items-start justify-between gap-2">
               <a
                 href={ensAppUrl(domain.name)}
@@ -126,7 +123,6 @@ export default function DomainsTable({
               </span>
             </div>
 
-            {/* Row 2: badge + date */}
             <div className="mt-2 flex flex-wrap items-center gap-2">
               <ExpiryBadge domain={domain} />
               <span className="text-xs text-terminal-muted">
@@ -134,7 +130,6 @@ export default function DomainsTable({
               </span>
             </div>
 
-            {/* Row 3: owner + action */}
             <div className="mt-3 flex items-center justify-between pt-2 border-t border-terminal-border">
               <a
                 href={etherscanUrl(domain.owner)}
@@ -157,7 +152,7 @@ export default function DomainsTable({
         ))}
       </div>
 
-      {/* Desktop table — visible at md and above */}
+      {/* Desktop table */}
       <div className="hidden md:block overflow-x-auto rounded-lg border border-terminal-border">
         <table className="w-full border-collapse text-sm">
           <thead className="bg-terminal-surface text-left text-xs text-terminal-muted uppercase tracking-wider">

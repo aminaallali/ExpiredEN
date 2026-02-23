@@ -46,19 +46,13 @@ export async function fetchExpiringRegistrations({
   const window = getPhaseWindow(phase)
   const isAsc = sortDirection === 'asc'
 
-  // Build cursor-aware where clause
-  // ASC: page forward from low expiryDate to high
-  // DESC: page backward from high expiryDate to low
   let whereClause: string
 
   if (!cursor) {
-    // First page: both bounds, direction handled by orderDirection
     whereClause = `expiryDate_gt: "${window.gt}", expiryDate_lt: "${window.lt}"`
   } else if (isAsc) {
-    // Next page ASC: start from cursor going up
     whereClause = `expiryDate_gte: "${cursor.expiryDate}", id_gt: "${cursor.id}", expiryDate_lt: "${window.lt}"`
   } else {
-    // Next page DESC: start from cursor going down
     whereClause = `expiryDate_gt: "${window.gt}", expiryDate_lte: "${cursor.expiryDate}", id_lt: "${cursor.id}"`
   }
 
@@ -87,30 +81,23 @@ export async function fetchExpiringRegistrations({
   const rawResults = json.data.registrations
   let results = [...rawResults]
 
-  // Client-side filtering
   const now = Math.floor(Date.now() / 1000)
 
   results = results.filter((reg) => {
     const label = reg.domain.labelName ?? ''
     const len = label ? [...label].length : 0
 
-    // Length filter
     if (minLength !== undefined && len < minLength) return false
     if (maxLength !== undefined && len > maxLength) return false
 
-    // Emoji filter — FIXED: use Extended_Pictographic, not Emoji
-    // /\p{Emoji}/u matches digits 0-9 which breaks everything
     if (hideEmojiDomains && /\p{Extended_Pictographic}/u.test(label)) {
       return false
     }
 
-    // English only filter
     if (englishOnly && !ENGLISH_WORDS.has(label.toLowerCase())) {
       return false
     }
 
-    // Days remaining filter — FIXED: phase-aware calculation
-    // Old code did: expiryDate > now + X which is always false for expired domains
     if (maxDaysLeft !== undefined) {
       const expiry = Number(reg.expiryDate)
 
@@ -124,13 +111,11 @@ export async function fetchExpiringRegistrations({
         const daysLeft = Math.ceil((availableAt - now) / 86400)
         if (daysLeft > maxDaysLeft) return false
       }
-      // available phase: don't filter, they're already available
     }
 
     return true
   })
 
-  // Cursor comes from RAW (unfiltered) results so pagination doesn't break
   const rawLast = rawResults[rawResults.length - 1]
   const nextCursor: PageCursor | null =
     rawResults.length === PAGE_SIZE && rawLast
@@ -140,7 +125,6 @@ export async function fetchExpiringRegistrations({
   return { registrations: results, nextCursor }
 }
 
-// Paginated counter for accurate phase counts
 async function countPhaseRegistrations(
   gt: string,
   lt: string

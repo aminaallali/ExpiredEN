@@ -26,7 +26,6 @@ export default function DomainRow({ domain, index }: Props) {
       className="domain-row border-b border-terminal-border last:border-0 animate-in"
       style={{ animationDelay: `${Math.min(index * 20, 300)}ms` }}
     >
-      {/* Domain name */}
       <td className="p-3">
         <a
           href={ensAppUrl(domain.name)}
@@ -38,27 +37,22 @@ export default function DomainRow({ domain, index }: Props) {
         </a>
       </td>
 
-      {/* Character count */}
       <td className="p-3 text-terminal-muted text-sm">
         {domain.characterCount}
       </td>
 
-      {/* Type — hidden on smaller screens */}
       <td className="p-3 text-sm hidden lg:table-cell" title={typeTitle}>
         {typeLabel}
       </td>
 
-      {/* Expiry date — hidden on smaller screens */}
       <td className="p-3 text-terminal-muted text-xs whitespace-nowrap hidden md:table-cell">
         {formatExpiryDate(domain.expiryDate)}
       </td>
 
-      {/* Phase badge */}
       <td className="p-3">
         <ExpiryBadge domain={domain} />
       </td>
 
-      {/* Owner — hidden on smaller screens */}
       <td className="p-3 hidden lg:table-cell">
         <a
           href={etherscanUrl(domain.owner)}
@@ -70,7 +64,6 @@ export default function DomainRow({ domain, index }: Props) {
         </a>
       </td>
 
-      {/* Action */}
       <td className="p-3">
         <a
           href={ensAppUrl(domain.name)}
