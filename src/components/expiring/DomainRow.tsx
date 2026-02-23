@@ -1,12 +1,14 @@
-import type { Domain } from '@/types/ens';
-import ExpiryBadge from './ExpiryBadge';
+import type { ExpiringDomain } from '@/types/ens'
+import ExpiryBadge from './ExpiryBadge'
 
-export default function DomainRow({ domain }: { domain: Domain }) {
+export default function DomainRow({ domain }: { domain: ExpiringDomain }) {
   return (
-    <tr className="border-b border-slate-800">
-      <td className="p-2">{domain.name}</td>
-      <td className="p-2 capitalize">{domain.phase}</td>
-      <td className="p-2"><ExpiryBadge expiryDate={domain.expiryDate} /></td>
+    <tr className="domain-row border-b border-terminal-border">
+      <td className="p-3 text-terminal-text">{domain.name}</td>
+      <td className="p-3 capitalize text-terminal-muted">{domain.phase}</td>
+      <td className="p-3">
+        <ExpiryBadge expiryDate={domain.expiryDate} />
+      </td>
     </tr>
-  );
+  )
 }
