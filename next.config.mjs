@@ -1,7 +1,5 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  output: 'standalone',
-
   headers: async () => [
     {
       source: '/(.*)',
@@ -12,8 +10,6 @@ const nextConfig = {
       ],
     },
   ],
-
-  serverExternalPackages: [],
 }
 
 export default nextConfig
