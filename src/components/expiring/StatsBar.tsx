@@ -37,11 +37,7 @@ export function StatsBar({ activePhase }: Props) {
             <div className="h-8 w-16 bg-terminal-border rounded animate-pulse" />
           ) : (
             <div className={`text-2xl font-bold font-display ${stat.color}`}>
-              {data === undefined
-                ? '—'
-                : data[stat.phase] >= 1000
-                ? '1000+'
-                : data[stat.phase]}
+              {data === undefined ? '—' : data[stat.phase].toLocaleString()}
             </div>
           )}
         </div>
