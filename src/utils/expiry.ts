@@ -1,9 +1,13 @@
-import { ExpiryPhase, PhaseWindow, SubgraphRegistration, ExpiringDomain } from '@/types/ens'
+import {
+  ExpiryPhase,
+  PhaseWindow,
+  SubgraphRegistration,
+  ExpiringDomain,
+} from '@/types/ens'
 
-export const GRACE_PERIOD_SECONDS = 90 * 24 * 60 * 60   // 90 days
-export const PREMIUM_PERIOD_SECONDS = 21 * 24 * 60 * 60  // 21 days
+export const GRACE_PERIOD_SECONDS = 90 * 24 * 60 * 60
+export const PREMIUM_PERIOD_SECONDS = 21 * 24 * 60 * 60
 
-// Get the time window for a phase to pass to the subgraph
 export function getPhaseWindow(phase: ExpiryPhase): PhaseWindow {
   const now = Math.floor(Date.now() / 1000)
 
@@ -20,13 +24,17 @@ export function getPhaseWindow(phase: ExpiryPhase): PhaseWindow {
       }
     case 'available':
       return {
-        gt: String(now - GRACE_PERIOD_SECONDS - PREMIUM_PERIOD_SECONDS - 30 * 24 * 60 * 60),
+        gt: String(
+          now -
+            GRACE_PERIOD_SECONDS -
+            PREMIUM_PERIOD_SECONDS -
+            30 * 24 * 60 * 60
+        ),
         lt: String(now - GRACE_PERIOD_SECONDS - PREMIUM_PERIOD_SECONDS),
       }
   }
 }
 
-// Calculate what phase a domain is in from its raw expiry timestamp
 export function getPhaseFromExpiry(expiryTimestamp: number): ExpiryPhase {
   const now = Math.floor(Date.now() / 1000)
   const graceEnds = expiryTimestamp + GRACE_PERIOD_SECONDS
@@ -37,21 +45,41 @@ export function getPhaseFromExpiry(expiryTimestamp: number): ExpiryPhase {
   return 'available'
 }
 
-// Days until a domain is freely registerable
 export function getDaysUntilAvailable(expiryTimestamp: number): number {
-  const availableAt = expiryTimestamp + GRACE_PERIOD_SECONDS + PREMIUM_PERIOD_SECONDS
+  const availableAt =
+    expiryTimestamp + GRACE_PERIOD_SECONDS + PREMIUM_PERIOD_SECONDS
   const now = Math.floor(Date.now() / 1000)
   return Math.max(0, Math.ceil((availableAt - now) / 86400))
 }
 
-// Days remaining in grace period
 export function getDaysInGrace(expiryTimestamp: number): number {
   const graceEnds = expiryTimestamp + GRACE_PERIOD_SECONDS
   const now = Math.floor(Date.now() / 1000)
   return Math.max(0, Math.ceil((graceEnds - now) / 86400))
 }
 
-// Human readable time format
+// Calculate days remaining in the current phase
+export function getDaysLeftInPhase(
+  expiryTimestamp: number,
+  phase: ExpiryPhase
+): number {
+  const now = Math.floor(Date.now() / 1000)
+
+  switch (phase) {
+    case 'grace': {
+      const graceEnds = expiryTimestamp + GRACE_PERIOD_SECONDS
+      return Math.max(0, Math.ceil((graceEnds - now) / 86400))
+    }
+    case 'premium': {
+      const availableAt =
+        expiryTimestamp + GRACE_PERIOD_SECONDS + PREMIUM_PERIOD_SECONDS
+      return Math.max(0, Math.ceil((availableAt - now) / 86400))
+    }
+    case 'available':
+      return 0
+  }
+}
+
 export function formatTimeAgo(timestamp: number): string {
   const now = Math.floor(Date.now() / 1000)
   const diff = now - timestamp
@@ -68,8 +96,15 @@ export function formatExpiryDate(timestamp: number): string {
   })
 }
 
-// Transform raw subgraph registration into UI-ready ExpiringDomain
-export function transformRegistration(reg: SubgraphRegistration): ExpiringDomain | null {
+// FIX: Use Extended_Pictographic instead of Emoji
+// The old regex /\p{Emoji}/u matches digits 0-9 which is wrong
+function containsEmoji(str: string): boolean {
+  return /\p{Extended_Pictographic}/u.test(str)
+}
+
+export function transformRegistration(
+  reg: SubgraphRegistration
+): ExpiringDomain | null {
   const labelName = reg.domain.labelName
   const name = reg.domain.name
 
@@ -78,19 +113,23 @@ export function transformRegistration(reg: SubgraphRegistration): ExpiringDomain
   const expiryDate = parseInt(reg.expiryDate)
   const phase = getPhaseFromExpiry(expiryDate)
   const daysUntilAvailable = getDaysUntilAvailable(expiryDate)
+  const daysLeftInPhase = getDaysLeftInPhase(expiryDate, phase)
 
   const hasNumbers = /\d/.test(labelName)
-  const hasEmoji = /\p{Extended_Pictographic}/u.test(labelName)
+  const hasEmoji = containsEmoji(labelName)
 
   return {
     id: reg.id,
     name,
     labelName,
     labelhash: reg.domain.labelhash,
-    owner: reg.registrant?.id ?? '0x0000000000000000000000000000000000000000',
+    owner:
+      reg.registrant?.id ??
+      '0x0000000000000000000000000000000000000000',
     expiryDate,
     phase,
     daysUntilAvailable,
+    daysLeftInPhase,
     characterCount: [...labelName].length,
     hasNumbers,
     hasEmoji,

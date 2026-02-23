@@ -2,7 +2,7 @@ import { formatExpiryDate } from '@/utils/expiry'
 
 export default function ExpiryBadge({ expiryDate }: { expiryDate: number }) {
   return (
-    <span className="rounded bg-terminal-surface px-2 py-1 text-xs text-terminal-muted">
+    <span className="bg-brand-cream text-brand-dark px-3 py-1.5 rounded-full text-sm font-medium">
       {formatExpiryDate(expiryDate)}
     </span>
   )

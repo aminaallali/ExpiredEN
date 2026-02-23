@@ -1,17 +1,18 @@
 'use client'
 
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState } from 'react'
 import { useRouter, usePathname, useSearchParams } from 'next/navigation'
-import { ExpiryPhase } from '@/types/ens'
+import { ExpiryPhase, SortOption } from '@/types/ens'
 import DomainsTable from './DomainsTable'
 
 interface Props {
   activePhase: ExpiryPhase
   minLength?: number
   maxLength?: number
-  expiresWithinDays?: number
+  maxDaysLeft?: number
   englishOnly?: boolean
   hideEmojiDomains?: boolean
+  sort?: SortOption
 }
 
 const TABS: { label: string; value: ExpiryPhase }[] = [
@@ -20,46 +21,25 @@ const TABS: { label: string; value: ExpiryPhase }[] = [
   { label: 'Available', value: 'available' },
 ]
 
-function useDebouncedParam(
-  key: string,
-  initialValue: string,
-  updateParam: (key: string, value?: string) => void,
-  delay = 400
-) {
-  const [local, setLocal] = useState(initialValue)
-  const timerRef = useRef<ReturnType<typeof setTimeout>>()
-
-  useEffect(() => {
-    setLocal(initialValue)
-  }, [initialValue])
-
-  const onChange = useCallback(
-    (value: string) => {
-      setLocal(value)
-      clearTimeout(timerRef.current)
-      timerRef.current = setTimeout(() => {
-        updateParam(key, value || undefined)
-      }, delay)
-    },
-    [key, updateParam, delay]
-  )
-
-  useEffect(() => () => clearTimeout(timerRef.current), [])
-
-  return [local, onChange] as const
-}
-
 export function PhaseTabs({
   activePhase,
   minLength,
   maxLength,
-  expiresWithinDays,
+  maxDaysLeft,
   englishOnly,
   hideEmojiDomains,
+  sort = 'ending-soon',
 }: Props) {
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
+
+  const [localMinLen, setLocalMinLen] = useState(minLength?.toString() ?? '')
+  const [localMaxLen, setLocalMaxLen] = useState(maxLength?.toString() ?? '')
+  const [localMaxDays, setLocalMaxDays] = useState(maxDaysLeft?.toString() ?? '')
+  const [localEnglish, setLocalEnglish] = useState(englishOnly ?? false)
+  const [localHideEmoji, setLocalHideEmoji] = useState(hideEmojiDomains ?? false)
+  const [localSort, setLocalSort] = useState<SortOption>(sort)
 
   function setPhase(phase: ExpiryPhase) {
     const params = new URLSearchParams(searchParams.toString())
@@ -67,112 +47,160 @@ export function PhaseTabs({
     router.push(`${pathname}?${params.toString()}`)
   }
 
-  const updateParam = useCallback(
-    (key: string, value?: string) => {
-      const params = new URLSearchParams(searchParams.toString())
-      if (!value) params.delete(key)
-      else params.set(key, value)
-      router.push(`${pathname}?${params.toString()}`)
-    },
-    [router, pathname, searchParams]
-  )
+  function applyFilters() {
+    const params = new URLSearchParams()
+    params.set('phase', activePhase)
 
-  const [localMin, setLocalMin] = useDebouncedParam(
-    'minLen',
-    minLength?.toString() ?? '',
-    updateParam
-  )
-  const [localMax, setLocalMax] = useDebouncedParam(
-    'maxLen',
-    maxLength?.toString() ?? '',
-    updateParam
-  )
-  const [localExpires, setLocalExpires] = useDebouncedParam(
-    'expiresIn',
-    expiresWithinDays?.toString() ?? '',
-    updateParam
-  )
+    if (localMinLen) params.set('minLen', localMinLen)
+    if (localMaxLen) params.set('maxLen', localMaxLen)
+    if (localMaxDays) params.set('maxDays', localMaxDays)
+    if (localEnglish) params.set('englishOnly', '1')
+    if (localHideEmoji) params.set('hideEmoji', '1')
+    if (localSort !== 'ending-soon') params.set('sort', localSort)
+
+    router.push(`${pathname}?${params.toString()}`)
+  }
+
+  function clearFilters() {
+    setLocalMinLen('')
+    setLocalMaxLen('')
+    setLocalMaxDays('')
+    setLocalEnglish(false)
+    setLocalHideEmoji(false)
+    setLocalSort('ending-soon')
+
+    const params = new URLSearchParams()
+    params.set('phase', activePhase)
+    router.push(`${pathname}?${params.toString()}`)
+  }
+
+  const hasActiveFilters =
+    localMinLen || localMaxLen || localMaxDays || localEnglish || localHideEmoji || localSort !== 'ending-soon'
+
+  const sortDirection = sort === 'most-time' ? 'desc' : 'asc'
 
   return (
     <div>
-      <div className="mb-6 flex flex-wrap border-b border-terminal-border">
+      <div className="mb-8 flex flex-wrap gap-3">
         {TABS.map((tab) => (
           <button
             key={tab.value}
             onClick={() => setPhase(tab.value)}
-            aria-selected={activePhase === tab.value}
-            role="tab"
-            className={`px-4 py-3 text-sm transition-colors sm:px-6 ${
+            className={`px-6 py-3 rounded-full text-sm font-medium transition-all ${
               activePhase === tab.value
-                ? 'border-b-2 border-terminal-accent text-terminal-accent'
-                : 'text-terminal-muted hover:text-terminal-text'
+                ? 'bg-brand-surface-light text-brand-text'
+                : 'bg-transparent text-brand-muted hover:text-brand-text hover:bg-brand-surface/50'
             }`}
           >
-            {tab.label}
+            {tab.label.toUpperCase()}
           </button>
         ))}
       </div>
 
-      <div className="mb-5 grid gap-3 rounded-lg border border-terminal-border bg-terminal-surface/40 p-3 sm:grid-cols-2 lg:grid-cols-5">
-        <label className="text-xs text-terminal-muted">
-          Min length
+      <div className="mb-8 flex flex-wrap gap-4">
+        <div>
+          <label className="block text-xs text-brand-muted mb-1 ml-2">Min length</label>
           <input
             type="number"
             min={1}
-            value={localMin}
-            onChange={(e) => setLocalMin(e.target.value)}
-            className="mt-1 w-full rounded border border-terminal-border bg-terminal-bg px-2 py-2 text-sm text-terminal-text"
+            max={255}
+            placeholder="e.g. 3"
+            value={localMinLen}
+            onChange={(e) => setLocalMinLen(e.target.value)}
+            className="bg-brand-surface border border-brand-surface-light rounded-full px-4 py-2 text-sm text-brand-text focus:border-brand-yellow outline-none"
           />
-        </label>
+        </div>
 
-        <label className="text-xs text-terminal-muted">
-          Max length
+        <div>
+          <label className="block text-xs text-brand-muted mb-1 ml-2">Max length</label>
           <input
             type="number"
             min={1}
-            value={localMax}
-            onChange={(e) => setLocalMax(e.target.value)}
-            className="mt-1 w-full rounded border border-terminal-border bg-terminal-bg px-2 py-2 text-sm text-terminal-text"
+            max={255}
+            placeholder="e.g. 5"
+            value={localMaxLen}
+            onChange={(e) => setLocalMaxLen(e.target.value)}
+            className="bg-brand-surface border border-brand-surface-light rounded-full px-4 py-2 text-sm text-brand-text focus:border-brand-yellow outline-none"
           />
-        </label>
+        </div>
 
-        <label className="text-xs text-terminal-muted">
-          Expires within (days)
+        <div>
+          <label className="block text-xs text-brand-muted mb-1 ml-2">
+            {activePhase === 'grace'
+              ? 'Grace ends within (days)'
+              : activePhase === 'premium'
+              ? 'Available within (days)'
+              : 'Days filter'}
+          </label>
           <input
             type="number"
             min={1}
-            value={localExpires}
-            onChange={(e) => setLocalExpires(e.target.value)}
-            className="mt-1 w-full rounded border border-terminal-border bg-terminal-bg px-2 py-2 text-sm text-terminal-text"
+            placeholder="e.g. 30"
+            value={localMaxDays}
+            onChange={(e) => setLocalMaxDays(e.target.value)}
+            disabled={activePhase === 'available'}
+            className="bg-brand-surface border border-brand-surface-light rounded-full px-4 py-2 text-sm text-brand-text focus:border-brand-yellow outline-none disabled:opacity-40"
           />
-        </label>
+        </div>
 
-        <label className="flex items-center gap-2 rounded border border-terminal-border px-3 py-2 text-sm text-terminal-muted">
+        <div>
+          <label className="block text-xs text-brand-muted mb-1 ml-2">Sort order</label>
+          <select
+            value={localSort}
+            onChange={(e) => setLocalSort(e.target.value as SortOption)}
+            className="bg-brand-surface border border-brand-surface-light rounded-full px-4 py-2 text-sm text-brand-text focus:border-brand-yellow outline-none"
+          >
+            <option value="ending-soon">Ending Soon First</option>
+            <option value="most-time">Most Time Left First</option>
+          </select>
+        </div>
+
+        <label className="flex items-center gap-2 text-sm text-brand-muted self-end pb-2">
           <input
             type="checkbox"
-            checked={englishOnly ?? false}
-            onChange={(e) => updateParam('englishOnly', e.target.checked ? '1' : undefined)}
+            checked={localEnglish}
+            onChange={(e) => setLocalEnglish(e.target.checked)}
+            className="accent-brand-yellow"
           />
-          English dictionary words
+          English words only
         </label>
 
-        <label className="flex items-center gap-2 rounded border border-terminal-border px-3 py-2 text-sm text-terminal-muted">
+        <label className="flex items-center gap-2 text-sm text-brand-muted self-end pb-2">
           <input
             type="checkbox"
-            checked={hideEmojiDomains ?? false}
-            onChange={(e) => updateParam('hideEmoji', e.target.checked ? '1' : undefined)}
+            checked={localHideEmoji}
+            onChange={(e) => setLocalHideEmoji(e.target.checked)}
+            className="accent-brand-yellow"
           />
           Hide emoji domains
         </label>
+
+        <div className="flex gap-2 self-end pb-1">
+          {hasActiveFilters && (
+            <button
+              onClick={clearFilters}
+              className="px-4 py-2 rounded-full border border-brand-surface-light text-brand-muted hover:text-brand-text"
+            >
+              Clear
+            </button>
+          )}
+          <button
+            onClick={applyFilters}
+            className="px-4 py-2 rounded-full bg-brand-yellow text-brand-dark font-medium"
+          >
+            Apply Filters
+          </button>
+        </div>
       </div>
 
       <DomainsTable
         phase={activePhase}
         minLength={minLength}
         maxLength={maxLength}
-        expiresWithinDays={expiresWithinDays}
+        maxDaysLeft={maxDaysLeft}
         englishOnly={englishOnly}
         hideEmojiDomains={hideEmojiDomains}
+        sortDirection={sortDirection as 'asc' | 'desc'}
       />
     </div>
   )
