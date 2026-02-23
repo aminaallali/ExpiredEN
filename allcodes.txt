@@ -1,0 +1,2080 @@
+# Project Code Snapshot
+Generated on: 2026-02-23T16:39:33Z
+
+This file contains tracked project files with their relative paths and full contents.
+
+================================================================================
+PATH: .dockerignore
+--------------------------------------------------------------------------------
+node_modules
+.next
+.git
+.gitignore
+.env.local
+*.md
+.DS_Store
+fly.toml
+
+
+================================================================================
+PATH: .env.example
+--------------------------------------------------------------------------------
+NEXT_PUBLIC_APP_NAME=ExpiredEN
+SUBGRAPH_URL=https://api.thegraph.com/subgraphs/name/ensdomains/ens
+SUBGRAPH_API_KEY=your_api_key_here
+
+
+================================================================================
+PATH: .env.local
+--------------------------------------------------------------------------------
+# Server-only — never exposed to browser
+GRAPH_API_KEY=7931bbdbb9039181af8c8d71f18c68b6
+
+
+================================================================================
+PATH: .gitkeep
+--------------------------------------------------------------------------------
+
+
+================================================================================
+PATH: Dockerfile
+--------------------------------------------------------------------------------
+# Stage 1: Install dependencies
+FROM node:18-alpine AS deps
+WORKDIR /app
+COPY package.json package-lock.json* ./
+RUN npm ci
+
+# Stage 2: Build the application
+FROM node:18-alpine AS builder
+WORKDIR /app
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .
+
+# Build args become env vars at build time only
+ARG GRAPH_API_KEY
+ENV GRAPH_API_KEY=$GRAPH_API_KEY
+
+RUN npm run build
+
+# Stage 3: Production runner
+FROM node:18-alpine AS runner
+WORKDIR /app
+
+ENV NODE_ENV=production
+
+# Don't run as root
+RUN addgroup --system --gid 1001 nodejs
+RUN adduser --system --uid 1001 nextjs
+
+# Copy only what's needed to run
+COPY --from=builder /app/public ./public
+COPY --from=builder /app/.next/standalone ./
+COPY --from=builder /app/.next/static ./.next/static
+
+USER nextjs
+
+EXPOSE 3000
+ENV PORT=3000
+ENV HOSTNAME="0.0.0.0"
+
+CMD ["node", "server.js"]
+
+
+================================================================================
+PATH: fly.toml
+--------------------------------------------------------------------------------
+app = "ens-expiring"
+primary_region = "iad"
+
+[build]
+
+[env]
+  NODE_ENV = "production"
+
+[http_service]
+  internal_port = 3000
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+
+  [http_service.concurrency]
+    type = "requests"
+    hard_limit = 250
+    soft_limit = 200
+
+[[vm]]
+  memory = "512mb"
+  cpu_kind = "shared"
+  cpus = 1
+
+
+================================================================================
+PATH: next-env.d.ts
+--------------------------------------------------------------------------------
+/// <reference types="next" />
+/// <reference types="next/image-types/global" />
+
+// NOTE: This file should not be edited
+
+
+================================================================================
+PATH: next.config.mjs
+--------------------------------------------------------------------------------
+/** @type {import('next').NextConfig} */
+const nextConfig = {
+  headers: async () => [
+    {
+      source: '/(.*)',
+      headers: [
+        { key: 'X-Frame-Options', value: 'DENY' },
+        { key: 'X-Content-Type-Options', value: 'nosniff' },
+        { key: 'Referrer-Policy', value: 'origin-when-cross-origin' },
+      ],
+    },
+  ],
+}
+
+export default nextConfig
+
+
+================================================================================
+PATH: package.json
+--------------------------------------------------------------------------------
+{
+  "name": "ens-expiring",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start -p ${PORT:-3000}"
+  },
+  "dependencies": {
+    "next": "14.2.5",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "@tanstack/react-query": "^5.51.1",
+    "@tanstack/react-query-devtools": "^5.51.1"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.3",
+    "@types/node": "^20.14.10",
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "tailwindcss": "^3.4.6",
+    "autoprefixer": "^10.4.19",
+    "postcss": "^8.4.39"
+  },
+  "engines": {
+    "node": ">=18.17.0"
+  }
+}
+
+
+================================================================================
+PATH: postcss.config.js
+--------------------------------------------------------------------------------
+module.exports = {
+  plugins: {
+    tailwindcss: {},
+    autoprefixer: {},
+  },
+}
+
+
+================================================================================
+PATH: public/README.md
+--------------------------------------------------------------------------------
+This directory intentionally contains no binary assets.
+
+If needed for deployment, add generated/static assets in text-friendly formats tracked by policy.
+
+
+================================================================================
+PATH: src/app/api/subgraph/route.ts
+--------------------------------------------------------------------------------
+import { NextRequest, NextResponse } from 'next/server'
+
+const SUBGRAPH_URL = `https://gateway-arbitrum.network.thegraph.com/api/${process.env.GRAPH_API_KEY}/subgraphs/id/5XqPmWe6gjyrJtFn9cLy237i4cWw2j9HcUJEXsP5qGtH`
+
+export async function POST(req: NextRequest) {
+  // Validate API key exists
+  if (!process.env.GRAPH_API_KEY) {
+    return NextResponse.json(
+      { error: 'GRAPH_API_KEY not configured' },
+      { status: 500 }
+    )
+  }
+
+  let body: { query?: string }
+
+  try {
+    body = await req.json()
+  } catch {
+    return NextResponse.json(
+      { error: 'Invalid JSON body' },
+      { status: 400 }
+    )
+  }
+
+  // Only allow read queries
+  if (
+    typeof body.query !== 'string' ||
+    body.query.includes('mutation') ||
+    body.query.includes('subscription')
+  ) {
+    return NextResponse.json(
+      { error: 'Only read queries allowed' },
+      { status: 400 }
+    )
+  }
+
+  // Rate limit: basic protection via size cap
+  if (body.query.length > 2000) {
+    return NextResponse.json(
+      { error: 'Query too large' },
+      { status: 400 }
+    )
+  }
+
+  try {
+    const response = await fetch(SUBGRAPH_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query: body.query }),
+      // Cache at edge for 60 seconds
+      next: { revalidate: 60 },
+    })
+
+    if (!response.ok) {
+      return NextResponse.json(
+        { error: `Subgraph returned ${response.status}` },
+        { status: 502 }
+      )
+    }
+
+    const data = await response.json()
+
+    // Pass through subgraph errors
+    if (data.errors?.length) {
+      return NextResponse.json(
+        { error: data.errors[0].message, errors: data.errors },
+        { status: 422 }
+      )
+    }
+
+    return NextResponse.json(data, {
+      headers: {
+        'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=120',
+      },
+    })
+  } catch (err) {
+    console.error('Subgraph fetch failed:', err)
+    return NextResponse.json(
+      { error: 'Failed to reach subgraph' },
+      { status: 502 }
+    )
+  }
+}
+
+
+================================================================================
+PATH: src/app/expiring/error.tsx
+--------------------------------------------------------------------------------
+'use client'
+
+import { useEffect } from 'react'
+
+export default function Error({
+  error,
+  reset,
+}: {
+  error: Error & { digest?: string }
+  reset: () => void
+}) {
+  useEffect(() => {
+    // Log to your error tracking service in production
+    console.error('Expiring page error:', error)
+  }, [error])
+
+  return (
+    <div className="max-w-7xl mx-auto px-4 py-24">
+      <div className="flex flex-col items-center justify-center text-center">
+        {/* Error icon */}
+        <div className="w-16 h-16 rounded-full bg-terminal-premium/10 border border-terminal-premium/30 flex items-center justify-center mb-6">
+          <span className="text-2xl">⚠</span>
+        </div>
+
+        <h2 className="font-display text-2xl font-bold text-terminal-text mb-3">
+          Something went wrong
+        </h2>
+
+        <p className="text-terminal-muted text-sm max-w-md mb-2">
+          Could not load expiring domains. This usually means the ENS subgraph
+          is temporarily unavailable.
+        </p>
+
+        {/* Show error detail in dev */}
+        {process.env.NODE_ENV === 'development' && (
+          <pre className="text-xs text-terminal-premium bg-terminal-surface border border-terminal-border rounded-lg p-4 mt-4 mb-6 max-w-lg overflow-auto text-left">
+            {error.message}
+            {error.digest && `\nDigest: ${error.digest}`}
+          </pre>
+        )}
+
+        <div className="flex gap-4 mt-6">
+          <button
+            onClick={reset}
+            className="px-6 py-2 text-sm bg-terminal-accent text-white rounded hover:bg-terminal-accent/80 transition-colors"
+          >
+            Try again
+          </button>
+
+          <a
+            href="https://thegraph.com/explorer/subgraphs/5XqPmWe6gjyrJtFn9cLy237i4cWw2j9HcUJEXsP5qGtH"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="px-6 py-2 text-sm border border-terminal-border text-terminal-muted rounded hover:text-terminal-text hover:border-terminal-accent transition-colors"
+          >
+            Check subgraph status ↗
+          </a>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+
+================================================================================
+PATH: src/app/expiring/loading.tsx
+--------------------------------------------------------------------------------
+export default function Loading() {
+  return (
+    <div className="max-w-7xl mx-auto px-4 py-8">
+      {/* Title skeleton */}
+      <div className="mb-8">
+        <div className="h-3 bg-terminal-surface rounded w-20 mb-4 animate-pulse" />
+        <div className="h-10 bg-terminal-surface rounded w-80 mb-2 animate-pulse" />
+        <div className="h-4 bg-terminal-surface rounded w-96 animate-pulse" />
+      </div>
+
+      {/* Stats skeleton */}
+      <div className="grid grid-cols-3 gap-4 mb-6">
+        {[1, 2, 3].map((i) => (
+          <div
+            key={i}
+            className="h-20 bg-terminal-surface border border-terminal-border rounded-lg animate-pulse"
+            style={{ animationDelay: `${i * 100}ms` }}
+          />
+        ))}
+      </div>
+
+      {/* Tabs skeleton */}
+      <div className="flex gap-0 border-b border-terminal-border mb-6">
+        {[1, 2, 3].map((i) => (
+          <div
+            key={i}
+            className="h-10 w-32 bg-terminal-surface animate-pulse"
+            style={{ animationDelay: `${i * 100}ms` }}
+          />
+        ))}
+      </div>
+
+      {/* Table rows skeleton */}
+      <div className="border border-terminal-border rounded-lg overflow-hidden">
+        {/* Header */}
+        <div className="h-10 bg-terminal-surface border-b border-terminal-border animate-pulse" />
+
+        {/* Rows */}
+        {Array.from({ length: 15 }).map((_, i) => (
+          <div
+            key={i}
+            className="h-12 border-b border-terminal-border animate-pulse"
+            style={{
+              animationDelay: `${i * 50}ms`,
+              opacity: 1 - i * 0.04,
+            }}
+          />
+        ))}
+      </div>
+    </div>
+  )
+}
+
+
+================================================================================
+PATH: src/app/expiring/page.tsx
+--------------------------------------------------------------------------------
+import { Suspense } from 'react'
+import { PhaseTabs } from '@/components/expiring/PhaseTabs'
+import { StatsBar } from '@/components/expiring/StatsBar'
+import { ExpiryPhase } from '@/types/ens'
+
+interface PageProps {
+  searchParams: Promise<{
+    phase?: string
+    minLen?: string
+    maxLen?: string
+    expiresIn?: string
+    englishOnly?: string
+    hideEmoji?: string
+  }>
+}
+
+export default async function ExpiringPage({ searchParams }: PageProps) {
+  const params = await searchParams
+
+  const phase = (['grace', 'premium', 'available'].includes(params.phase ?? '')
+    ? params.phase
+    : 'grace') as ExpiryPhase
+
+  const minLength = params.minLen ? parseInt(params.minLen) : undefined
+  const maxLength = params.maxLen ? parseInt(params.maxLen) : undefined
+  const expiresWithinDays = params.expiresIn
+    ? parseInt(params.expiresIn)
+    : undefined
+  const englishOnly = params.englishOnly === '1'
+  const hideEmojiDomains = params.hideEmoji === '1'
+
+  return (
+    <div className="max-w-7xl mx-auto px-4 py-8">
+      {/* Page title */}
+      <div className="mb-8">
+        <div className="flex items-center gap-2 mb-2">
+          <span className="live-dot w-2 h-2 rounded-full bg-terminal-available inline-block" />
+          <span className="text-xs text-terminal-muted uppercase tracking-widest">
+            Live Data
+          </span>
+        </div>
+        <h1 className="font-display text-4xl font-bold text-terminal-text">
+          Expiring <span className="text-terminal-accent">.eth</span> Domains
+        </h1>
+        <p className="mt-2 text-terminal-muted text-sm">
+          Track domains in grace period, premium auction, and newly available.
+        </p>
+      </div>
+
+      {/* Stats bar — wrapped in Suspense because it fetches data client-side */}
+      <Suspense
+        fallback={
+          <div className="grid grid-cols-3 gap-4 mb-6">
+            {[1, 2, 3].map((i) => (
+              <div
+                key={i}
+                className="h-20 bg-terminal-surface border border-terminal-border rounded-lg animate-pulse"
+              />
+            ))}
+          </div>
+        }
+      >
+        <StatsBar activePhase={phase} />
+      </Suspense>
+
+      {/* Phase tabs + filters + table — Suspense required for useSearchParams */}
+      <Suspense
+        fallback={
+          <div>
+            <div className="flex gap-0 border-b border-terminal-border mb-6">
+              {['Grace Period', 'Premium Auction', 'Available'].map((label) => (
+                <div
+                  key={label}
+                  className="px-6 py-3 text-sm text-terminal-muted"
+                >
+                  {label}
+                </div>
+              ))}
+            </div>
+            <div className="space-y-2">
+              {Array.from({ length: 10 }).map((_, i) => (
+                <div
+                  key={i}
+                  className="h-12 bg-terminal-surface rounded animate-pulse"
+                  style={{ animationDelay: `${i * 50}ms` }}
+                />
+              ))}
+            </div>
+          </div>
+        }
+      >
+        <PhaseTabs
+          activePhase={phase}
+          minLength={minLength}
+          maxLength={maxLength}
+          expiresWithinDays={expiresWithinDays}
+          englishOnly={englishOnly}
+          hideEmojiDomains={hideEmojiDomains}
+        />
+      </Suspense>
+    </div>
+  )
+}
+
+
+================================================================================
+PATH: src/app/globals.css
+--------------------------------------------------------------------------------
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Fonts loaded via next/font in layout.tsx — no @import needed */
+
+:root {
+  --bg: #0a0a0f;
+  --surface: #111118;
+  --border: #1e1e2e;
+  --text: #e2e2f0;
+  --muted: #6b6b8a;
+  --accent: #7c6af7;
+  --grace: #f59e0b;
+  --premium: #ec4899;
+  --available: #10b981;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background-color: var(--bg);
+  color: var(--text);
+}
+
+/* Scanline overlay for terminal aesthetic */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0, 0, 0, 0.03) 2px,
+    rgba(0, 0, 0, 0.03) 4px
+  );
+  pointer-events: none;
+  z-index: 9999;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: var(--bg);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--muted);
+}
+
+/* Table row hover */
+.domain-row:hover {
+  background: rgba(124, 106, 247, 0.04);
+}
+
+/* Animations */
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+.live-dot {
+  animation: pulse-dot 1.5s ease-in-out infinite;
+}
+
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-in {
+  animation: fade-in-up 0.3s ease forwards;
+}
+
+/* Focus styles for accessibility */
+*:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+
+================================================================================
+PATH: src/app/layout.tsx
+--------------------------------------------------------------------------------
+import type { Metadata } from 'next'
+import { Space_Mono, Syne } from 'next/font/google'
+import './globals.css'
+import { Providers } from './providers'
+import { Header } from '@/components/layout/Header'
+import { Footer } from '@/components/layout/Footer'
+
+// Load fonts via next/font — no render-blocking CSS imports
+const spaceMono = Space_Mono({
+  weight: ['400', '700'],
+  subsets: ['latin'],
+  variable: '--font-mono',
+  display: 'swap',
+})
+
+const syne = Syne({
+  weight: ['400', '600', '700', '800'],
+  subsets: ['latin'],
+  variable: '--font-display',
+  display: 'swap',
+})
+
+export const metadata: Metadata = {
+  title: 'ENS Expiring — Expiring .eth Domains',
+  description:
+    'Track ENS domains in grace period, premium auction, and newly available for registration.',
+  metadataBase: new URL('https://underbottom.com'),
+  openGraph: {
+    title: 'ENS Expiring',
+    description: 'Find expiring .eth domains before anyone else',
+    siteName: 'ENS Expiring',
+    type: 'website',
+  },
+  robots: {
+    index: true,
+    follow: true,
+  },
+}
+
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode
+}) {
+  return (
+    <html
+      lang="en"
+      className={`${spaceMono.variable} ${syne.variable}`}
+    >
+      <body className="font-mono">
+        <Providers>
+          <div className="min-h-screen flex flex-col">
+            <Header />
+            <main className="flex-1">{children}</main>
+            <Footer />
+          </div>
+        </Providers>
+      </body>
+    </html>
+  )
+}
+
+
+================================================================================
+PATH: src/app/page.tsx
+--------------------------------------------------------------------------------
+import { redirect } from 'next/navigation'
+
+export default function Home() {
+  redirect('/expiring')
+}
+
+
+================================================================================
+PATH: src/app/providers.tsx
+--------------------------------------------------------------------------------
+'use client'
+
+import { useState } from 'react'
+import { QueryClientProvider } from '@tanstack/react-query'
+import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
+import { makeQueryClient, getQueryClient } from '@/lib/queryClient'
+
+export function Providers({ children }: { children: React.ReactNode }) {
+  // Use useState to ensure one client per browser session
+  // Avoids hydration mismatch between server and client
+  const [queryClient] = useState(() => getQueryClient())
+
+  return (
+    <QueryClientProvider client={queryClient}>
+      {children}
+      {process.env.NODE_ENV === 'development' && (
+        <ReactQueryDevtools initialIsOpen={false} />
+      )}
+    </QueryClientProvider>
+  )
+}
+
+
+================================================================================
+PATH: src/components/expiring/DomainRow.tsx
+--------------------------------------------------------------------------------
+import type { ExpiringDomain } from '@/types/ens'
+import ExpiryBadge from './ExpiryBadge'
+
+export default function DomainRow({ domain }: { domain: ExpiringDomain }) {
+  return (
+    <tr className="domain-row border-b border-terminal-border">
+      <td className="p-3 text-terminal-text">{domain.name}</td>
+      <td className="p-3 capitalize text-terminal-muted">{domain.phase}</td>
+      <td className="p-3">
+        <ExpiryBadge expiryDate={domain.expiryDate} />
+      </td>
+    </tr>
+  )
+}
+
+
+================================================================================
+PATH: src/components/expiring/DomainsTable.tsx
+--------------------------------------------------------------------------------
+'use client'
+
+import { useExpiringDomains } from '@/hooks/useExpiringDomains'
+import { ExpiryPhase } from '@/types/ens'
+import DomainRow from './DomainRow'
+import EmptyState from '@/components/ui/EmptyState'
+import Spinner from '@/components/ui/Spinner'
+import ExpiryBadge from './ExpiryBadge'
+
+interface Props {
+  phase: ExpiryPhase
+  minLength?: number
+  maxLength?: number
+  expiresWithinDays?: number
+  englishOnly?: boolean
+  hideEmojiDomains?: boolean
+}
+
+export default function DomainsTable({
+  phase,
+  minLength,
+  maxLength,
+  expiresWithinDays,
+  englishOnly,
+  hideEmojiDomains,
+}: Props) {
+  const {
+    data,
+    isLoading,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useExpiringDomains({
+    phase,
+    minLength,
+    maxLength,
+    expiresWithinDays,
+    englishOnly,
+    hideEmojiDomains,
+  })
+
+  const domains = data?.pages.flatMap((p) => p.domains) ?? []
+
+  if (isLoading) return <Spinner label="Loading domains..." />
+  if (!domains.length) return <EmptyState title="No domains found" description="Try another phase or filter." />
+
+  return (
+    <div className="space-y-3">
+      <div className="rounded border border-terminal-border bg-terminal-surface/30 px-3 py-2 text-xs text-terminal-muted">
+        Showing {domains.length} domains
+      </div>
+
+      <div className="space-y-2 md:hidden">
+        {domains.map((domain) => (
+          <div
+            key={domain.id}
+            className="rounded border border-terminal-border bg-terminal-surface p-3"
+          >
+            <div className="font-medium text-terminal-text break-all">{domain.name}</div>
+            <div className="mt-1 text-xs capitalize text-terminal-muted">{domain.phase}</div>
+            <div className="mt-2 text-xs">
+              <ExpiryBadge expiryDate={domain.expiryDate} />
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <table className="hidden w-full border-collapse overflow-hidden rounded border border-terminal-border text-sm md:table">
+        <thead className="bg-terminal-surface text-left text-terminal-muted">
+          <tr>
+            <th className="p-3">Name</th>
+            <th className="p-3">Phase</th>
+            <th className="p-3">Expires</th>
+          </tr>
+        </thead>
+        <tbody>
+          {domains.map((domain) => (
+            <DomainRow key={domain.id} domain={domain} />
+          ))}
+        </tbody>
+      </table>
+      {hasNextPage && (
+        <button
+          onClick={() => fetchNextPage()}
+          disabled={isFetchingNextPage}
+          className="rounded border border-terminal-border bg-terminal-surface px-4 py-2 text-sm text-terminal-muted hover:text-terminal-text transition-colors"
+        >
+          {isFetchingNextPage ? 'Loading...' : 'Load more'}
+        </button>
+      )}
+    </div>
+  )
+}
+
+
+================================================================================
+PATH: src/components/expiring/ExpiryBadge.tsx
+--------------------------------------------------------------------------------
+import { formatExpiryDate } from '@/utils/expiry'
+
+export default function ExpiryBadge({ expiryDate }: { expiryDate: number }) {
+  return (
+    <span className="rounded bg-terminal-surface px-2 py-1 text-xs text-terminal-muted">
+      {formatExpiryDate(expiryDate)}
+    </span>
+  )
+}
+
+
+================================================================================
+PATH: src/components/expiring/PhaseFilters.tsx
+--------------------------------------------------------------------------------
+'use client'
+
+import { ExpiryPhase } from '@/types/ens'
+
+const PHASES: { label: string; value: ExpiryPhase | 'all' }[] = [
+  { label: 'All',     value: 'all' },
+  { label: 'Grace',   value: 'grace' },
+  { label: 'Premium', value: 'premium' },
+]
+
+export type PhaseValue = 'all' | ExpiryPhase
+
+export default function PhaseFilters({
+  value,
+  onChange,
+}: {
+  value: PhaseValue
+  onChange: (value: PhaseValue) => void
+}) {
+  return (
+    <div className="flex items-center justify-between mb-4">
+      <h2 className="text-sm font-medium text-terminal-muted">Filter by phase</h2>
+      <div className="flex gap-2">
+        {PHASES.map((p) => (
+          <button
+            key={p.value}
+            onClick={() => onChange(p.value)}
+            className={`rounded px-3 py-1 text-sm transition-colors ${
+              value === p.value
+                ? 'bg-terminal-accent text-white'
+                : 'bg-terminal-surface text-terminal-muted hover:text-terminal-text'
+            }`}
+          >
+            {p.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+
+================================================================================
+PATH: src/components/expiring/PhaseTabs.tsx
+--------------------------------------------------------------------------------
+'use client'
+
+import { useRouter, usePathname, useSearchParams } from 'next/navigation'
+import { ExpiryPhase } from '@/types/ens'
+import DomainsTable from './DomainsTable'
+
+interface Props {
+  activePhase: ExpiryPhase
+  minLength?: number
+  maxLength?: number
+  expiresWithinDays?: number
+  englishOnly?: boolean
+  hideEmojiDomains?: boolean
+}
+
+const TABS: { label: string; value: ExpiryPhase }[] = [
+  { label: 'Grace Period', value: 'grace' },
+  { label: 'Premium Auction', value: 'premium' },
+  { label: 'Available', value: 'available' },
+]
+
+export function PhaseTabs({
+  activePhase,
+  minLength,
+  maxLength,
+  expiresWithinDays,
+  englishOnly,
+  hideEmojiDomains,
+}: Props) {
+  const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
+
+  function setPhase(phase: ExpiryPhase) {
+    const params = new URLSearchParams(searchParams.toString())
+    params.set('phase', phase)
+    router.push(`${pathname}?${params.toString()}`)
+  }
+
+  function updateParam(key: string, value?: string) {
+    const params = new URLSearchParams(searchParams.toString())
+    if (!value) params.delete(key)
+    else params.set(key, value)
+    router.push(`${pathname}?${params.toString()}`)
+  }
+
+  return (
+    <div>
+      <div className="mb-6 flex flex-wrap border-b border-terminal-border">
+        {TABS.map((tab) => (
+          <button
+            key={tab.value}
+            onClick={() => setPhase(tab.value)}
+            className={`px-4 py-3 text-sm transition-colors sm:px-6 ${
+              activePhase === tab.value
+                ? 'border-b-2 border-terminal-accent text-terminal-accent'
+                : 'text-terminal-muted hover:text-terminal-text'
+            }`}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      <div className="mb-5 grid gap-3 rounded-lg border border-terminal-border bg-terminal-surface/40 p-3 sm:grid-cols-2 lg:grid-cols-5">
+        <label className="text-xs text-terminal-muted">
+          Min length
+          <input
+            type="number"
+            min={1}
+            value={minLength ?? ''}
+            onChange={(e) => updateParam('minLen', e.target.value || undefined)}
+            className="mt-1 w-full rounded border border-terminal-border bg-terminal-bg px-2 py-2 text-sm text-terminal-text"
+          />
+        </label>
+
+        <label className="text-xs text-terminal-muted">
+          Max length
+          <input
+            type="number"
+            min={1}
+            value={maxLength ?? ''}
+            onChange={(e) => updateParam('maxLen', e.target.value || undefined)}
+            className="mt-1 w-full rounded border border-terminal-border bg-terminal-bg px-2 py-2 text-sm text-terminal-text"
+          />
+        </label>
+
+        <label className="text-xs text-terminal-muted">
+          Expires within (days)
+          <input
+            type="number"
+            min={1}
+            value={expiresWithinDays ?? ''}
+            onChange={(e) => updateParam('expiresIn', e.target.value || undefined)}
+            className="mt-1 w-full rounded border border-terminal-border bg-terminal-bg px-2 py-2 text-sm text-terminal-text"
+          />
+        </label>
+
+        <label className="flex items-center gap-2 rounded border border-terminal-border px-3 py-2 text-sm text-terminal-muted">
+          <input
+            type="checkbox"
+            checked={englishOnly ?? false}
+            onChange={(e) => updateParam('englishOnly', e.target.checked ? '1' : undefined)}
+          />
+          English dictionary words
+        </label>
+
+        <label className="flex items-center gap-2 rounded border border-terminal-border px-3 py-2 text-sm text-terminal-muted">
+          <input
+            type="checkbox"
+            checked={hideEmojiDomains ?? false}
+            onChange={(e) => updateParam('hideEmoji', e.target.checked ? '1' : undefined)}
+          />
+          Hide emoji domains
+        </label>
+      </div>
+
+      <DomainsTable
+        phase={activePhase}
+        minLength={minLength}
+        maxLength={maxLength}
+        expiresWithinDays={expiresWithinDays}
+        englishOnly={englishOnly}
+        hideEmojiDomains={hideEmojiDomains}
+      />
+    </div>
+  )
+}
+
+
+================================================================================
+PATH: src/components/expiring/StatsBar.tsx
+--------------------------------------------------------------------------------
+'use client'
+
+import { useQuery } from '@tanstack/react-query'
+import { fetchPhaseCounts } from '@/lib/subgraph'
+import { ExpiryPhase } from '@/types/ens'
+
+interface Props {
+  activePhase: ExpiryPhase
+}
+
+const STATS: { label: string; phase: ExpiryPhase; color: string }[] = [
+  { label: 'Grace Period',     phase: 'grace',     color: 'text-terminal-grace' },
+  { label: 'Premium Auction',  phase: 'premium',   color: 'text-terminal-premium' },
+  { label: 'Available',        phase: 'available', color: 'text-terminal-available' },
+]
+
+export function StatsBar({ activePhase }: Props) {
+  const { data } = useQuery({
+    queryKey: ['phase-counts'],
+    queryFn: fetchPhaseCounts,
+    staleTime: 60 * 1000,
+  })
+
+  return (
+    <div className="grid grid-cols-3 gap-4 mb-6">
+      {STATS.map((stat) => (
+        <div
+          key={stat.phase}
+          className={`rounded-lg border p-4 transition-colors ${
+            activePhase === stat.phase
+              ? 'border-terminal-accent bg-terminal-surface'
+              : 'border-terminal-border bg-terminal-surface/50'
+          }`}
+        >
+          <div className="text-xs text-terminal-muted mb-1">{stat.label}</div>
+          <div className={`text-2xl font-bold font-display ${stat.color}`}>
+            {data === undefined
+              ? '—'
+              : data[stat.phase] >= 1000
+              ? '1000+'
+              : data[stat.phase]}
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+
+================================================================================
+PATH: src/components/layout/Footer.tsx
+--------------------------------------------------------------------------------
+export function Footer() {
+  return (
+    <footer className="border-t border-terminal-border px-6 py-4 text-xs text-terminal-muted">
+      Built for ENS expiration visibility. Data via{' '}
+      <a
+        href="https://thegraph.com"
+        target="_blank"
+        rel="noopener noreferrer"
+        className="hover:text-terminal-text transition-colors"
+      >
+        The Graph ↗
+      </a>
+    </footer>
+  )
+}
+
+
+================================================================================
+PATH: src/components/layout/Header.tsx
+--------------------------------------------------------------------------------
+import Link from 'next/link'
+
+export function Header() {
+  return (
+    <header className="flex items-center justify-between border-b border-terminal-border px-6 py-4">
+      <Link href="/" className="font-display text-xl font-bold text-terminal-text">
+        ExpiredEN
+      </Link>
+      <nav>
+        <Link href="/expiring" className="text-sm text-terminal-muted hover:text-terminal-text transition-colors">
+          Expiring
+        </Link>
+      </nav>
+    </header>
+  )
+}
+
+
+================================================================================
+PATH: src/components/ui/EmptyState.tsx
+--------------------------------------------------------------------------------
+export default function EmptyState({ title, description }: { title: string; description?: string }) {
+  return (
+    <div className="rounded border border-slate-800 bg-slate-900 p-6 text-center">
+      <h3 className="text-lg font-semibold">{title}</h3>
+      {description && <p className="mt-1 text-sm text-slate-400">{description}</p>}
+    </div>
+  );
+}
+
+
+================================================================================
+PATH: src/components/ui/Spinner.tsx
+--------------------------------------------------------------------------------
+export default function Spinner({ label = 'Loading...' }: { label?: string }) {
+  return <p className="text-sm text-slate-400">{label}</p>;
+}
+
+
+================================================================================
+PATH: src/data/englishWords.ts
+--------------------------------------------------------------------------------
+const COMMON_ENGLISH_WORDS = `
+about
+above
+after
+again
+agent
+agree
+alert
+allow
+alone
+along
+alpha
+always
+among
+angle
+apple
+apply
+arena
+argue
+arise
+array
+asset
+audio
+audit
+avoid
+award
+aware
+badge
+basic
+beach
+begin
+being
+below
+birth
+black
+blame
+block
+blood
+board
+brain
+brand
+bread
+break
+brief
+bring
+broad
+brown
+build
+buyer
+cable
+carry
+catch
+cause
+chain
+chair
+chart
+check
+chief
+child
+china
+claim
+class
+clean
+clear
+click
+clock
+close
+cloud
+coach
+coast
+count
+court
+cover
+craft
+cream
+crime
+cross
+crowd
+crown
+cycle
+daily
+dance
+datum
+death
+debug
+delay
+depth
+digit
+doubt
+draft
+drama
+dream
+dress
+drink
+drive
+eager
+early
+earth
+eight
+elite
+empty
+enemy
+enjoy
+enter
+entry
+equal
+error
+event
+every
+exact
+exist
+extra
+faith
+false
+fault
+field
+fifth
+fifty
+fight
+final
+first
+fixed
+flash
+floor
+focus
+force
+forth
+forty
+forum
+frame
+fresh
+front
+fruit
+fully
+funny
+giant
+given
+glass
+globe
+good
+grace
+grade
+grand
+grant
+graph
+great
+green
+group
+guard
+guess
+guest
+guide
+happy
+heart
+heavy
+honey
+horse
+hotel
+house
+human
+ideal
+image
+index
+inner
+input
+issue
+joint
+judge
+known
+label
+large
+laser
+later
+laugh
+layer
+learn
+lease
+least
+leave
+legal
+level
+light
+limit
+local
+logic
+loose
+lower
+lucky
+lunch
+major
+maker
+march
+match
+maybe
+mayor
+media
+metal
+might
+minor
+mixed
+model
+money
+month
+moral
+motor
+mount
+mouse
+mouth
+movie
+music
+never
+night
+noise
+north
+novel
+nurse
+ocean
+offer
+often
+order
+other
+owner
+panel
+paper
+party
+peace
+phase
+phone
+photo
+piece
+pilot
+pitch
+place
+plain
+plane
+plant
+plate
+point
+pound
+power
+press
+price
+pride
+prime
+print
+prior
+prize
+proof
+proud
+queen
+quick
+quiet
+radio
+raise
+range
+rapid
+ratio
+reach
+react
+ready
+refer
+right
+rival
+river
+robot
+rough
+round
+route
+royal
+rural
+scale
+scene
+scope
+score
+sense
+serve
+seven
+shall
+shape
+share
+sharp
+sheet
+shelf
+shell
+shift
+shine
+shirt
+shock
+shoot
+short
+shown
+sight
+since
+skill
+sleep
+slice
+small
+smart
+smile
+solid
+solve
+sound
+south
+space
+spare
+speak
+speed
+spend
+spice
+split
+sport
+stack
+staff
+stage
+stand
+start
+state
+steam
+steel
+stick
+still
+stock
+stone
+store
+storm
+story
+strip
+study
+style
+sugar
+suite
+super
+sweet
+table
+taste
+teach
+teeth
+thank
+their
+theme
+there
+thick
+thing
+think
+third
+those
+three
+throw
+tight
+title
+today
+topic
+total
+touch
+tough
+tower
+track
+trade
+train
+treat
+trend
+trial
+trust
+truth
+twice
+under
+union
+unity
+until
+upper
+upset
+urban
+usage
+usual
+valid
+value
+video
+visit
+vital
+voice
+waste
+watch
+water
+wheel
+where
+which
+while
+white
+whole
+woman
+world
+worry
+worth
+would
+write
+wrong
+yield
+young
+`;
+
+export const ENGLISH_WORDS = new Set(
+  COMMON_ENGLISH_WORDS.trim().split('\n')
+)
+
+
+================================================================================
+PATH: src/hooks/useExpiringDomains.ts
+--------------------------------------------------------------------------------
+'use client'
+
+import { useInfiniteQuery } from '@tanstack/react-query'
+import { fetchExpiringRegistrations } from '@/lib/subgraph'
+import { transformRegistration } from '@/utils/expiry'
+import { ExpiryPhase, ExpiringDomain, PageCursor } from '@/types/ens'
+
+interface UseExpiringDomainsOptions {
+  phase: ExpiryPhase
+  minLength?: number
+  maxLength?: number
+  expiresWithinDays?: number
+  englishOnly?: boolean
+  hideEmojiDomains?: boolean
+}
+
+interface ExpiringDomainsPage {
+  domains: ExpiringDomain[]
+  nextCursor: PageCursor | null
+  hasMore: boolean
+}
+
+export function useExpiringDomains({
+  phase,
+  minLength,
+  maxLength,
+  expiresWithinDays,
+  englishOnly,
+  hideEmojiDomains,
+}: UseExpiringDomainsOptions) {
+  return useInfiniteQuery<ExpiringDomainsPage, Error>({
+    queryKey: [
+      'expiring-domains',
+      phase,
+      minLength,
+      maxLength,
+      expiresWithinDays,
+      englishOnly,
+      hideEmojiDomains,
+    ],
+
+    queryFn: async ({ pageParam }): Promise<ExpiringDomainsPage> => {
+      const cursor = pageParam as PageCursor | undefined
+
+      const { registrations, nextCursor } = await fetchExpiringRegistrations({
+        phase,
+        cursor,
+        minLength,
+        maxLength,
+        expiresWithinDays,
+        englishOnly,
+        hideEmojiDomains,
+      })
+
+      // Transform raw registrations into UI-ready domains
+      // Filter out any that have no readable name
+      const domains: ExpiringDomain[] = registrations
+        .map(transformRegistration)
+        .filter((d): d is ExpiringDomain => d !== null)
+
+      return {
+        domains,
+        nextCursor,
+        hasMore: nextCursor !== null,
+      }
+    },
+
+    initialPageParam: undefined as PageCursor | undefined,
+
+    getNextPageParam: (lastPage): PageCursor | undefined =>
+      lastPage.hasMore ? (lastPage.nextCursor ?? undefined) : undefined,
+
+    // Refetch every 2 minutes in background to keep data fresh
+    refetchInterval: 2 * 60 * 1000,
+
+    // Don't refetch all pages — only the first one on background refresh
+    refetchOnMount: true,
+  })
+}
+
+
+================================================================================
+PATH: src/lib/queryClient.ts
+--------------------------------------------------------------------------------
+'use client'
+
+import { QueryClient } from '@tanstack/react-query'
+
+export function makeQueryClient() {
+  return new QueryClient({
+    defaultOptions: {
+      queries: {
+        staleTime: 60 * 1000,
+        gcTime: 5 * 60 * 1000,
+        retry: 2,
+        refetchOnWindowFocus: false,
+      },
+    },
+  })
+}
+
+let browserQueryClient: QueryClient | undefined
+
+export function getQueryClient() {
+  if (typeof window === 'undefined') {
+    // Server: always make a new client (avoids shared state between requests)
+    return makeQueryClient()
+  }
+  // Browser: reuse the same client across renders
+  if (!browserQueryClient) {
+    browserQueryClient = makeQueryClient()
+  }
+  return browserQueryClient
+}
+
+
+================================================================================
+PATH: src/lib/subgraph.ts
+--------------------------------------------------------------------------------
+import {
+  SubgraphResponse,
+  SubgraphRegistration,
+  FetchExpiringOptions,
+  PageCursor,
+} from '@/types/ens'
+import { getPhaseWindow } from '@/utils/expiry'
+import { ENGLISH_WORDS } from '@/data/englishWords'
+
+const PAGE_SIZE = 100
+
+// All queries go through our own API route — API key stays server-side
+async function querySubgraph(query: string): Promise<SubgraphResponse> {
+  const response = await fetch('/api/subgraph', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ query }),
+  })
+
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({ error: 'Unknown error' }))
+    throw new Error(err.error || `Request failed: ${response.status}`)
+  }
+
+  return response.json()
+}
+
+export async function fetchExpiringRegistrations({
+  phase,
+  cursor,
+  minLength,
+  maxLength,
+  expiresWithinDays,
+  englishOnly,
+  hideEmojiDomains,
+}: FetchExpiringOptions): Promise<{
+  registrations: SubgraphRegistration[]
+  nextCursor: PageCursor | null
+}> {
+  const window = getPhaseWindow(phase)
+
+  // Cursor-based pagination using expiryDate_gte + id_gt
+  // This avoids skipping domains with duplicate timestamps
+  const cursorFilter = cursor
+    ? `expiryDate_gte: "${cursor.expiryDate}", id_gt: "${cursor.id}"`
+    : `expiryDate_gt: "${window.gt}"`
+
+  const query = `{
+    registrations(
+      first: ${PAGE_SIZE}
+      orderBy: expiryDate
+      orderDirection: asc
+      where: {
+        ${cursorFilter}
+        expiryDate_lt: "${window.lt}"
+      }
+    ) {
+      id
+      expiryDate
+      domain {
+        name
+        labelName
+        labelhash
+      }
+      registrant {
+        id
+      }
+    }
+  }`
+
+  const json = await querySubgraph(query)
+
+  let results = json.data.registrations
+
+  // Client-side filtering (subgraph can't filter by label-derived fields)
+  if (
+    minLength !== undefined ||
+    maxLength !== undefined ||
+    expiresWithinDays !== undefined ||
+    englishOnly ||
+    hideEmojiDomains
+  ) {
+    const now = Math.floor(Date.now() / 1000)
+    const maxExpiry =
+      expiresWithinDays !== undefined
+        ? now + expiresWithinDays * 24 * 60 * 60
+        : undefined
+
+    results = results.filter((reg) => {
+      const label = reg.domain.labelName?.toLowerCase() ?? ''
+      const len = label ? [...label].length : 0
+
+      if (minLength && len < minLength) return false
+      if (maxLength && len > maxLength) return false
+      if (maxExpiry && Number(reg.expiryDate) > maxExpiry) return false
+
+      if (hideEmojiDomains && /\p{Emoji}/u.test(label)) return false
+
+      if (englishOnly) {
+        if (!ENGLISH_WORDS.has(label)) return false
+      }
+
+      return true
+    })
+  }
+
+  // Build cursor from the last raw item (before filtering)
+  // We use the unfiltered last item so pagination doesn't miss pages
+  const rawLast = json.data.registrations[json.data.registrations.length - 1]
+  const nextCursor: PageCursor | null =
+    json.data.registrations.length === PAGE_SIZE && rawLast
+      ? { expiryDate: rawLast.expiryDate, id: rawLast.id }
+      : null
+
+  return { registrations: results, nextCursor }
+}
+
+export async function fetchPhaseCounts(): Promise<{
+  grace: number
+  premium: number
+  available: number
+}> {
+  const now = Math.floor(Date.now() / 1000)
+  const graceStart = now - 90 * 24 * 60 * 60
+  const premiumStart = graceStart - 21 * 24 * 60 * 60
+  const availableStart = premiumStart - 30 * 24 * 60 * 60
+
+  // Larger cap improves count estimates for busy phases.
+  const query = `{
+    grace: registrations(
+      first: 50000
+      where: { expiryDate_gt: "${graceStart}", expiryDate_lt: "${now}" }
+    ) { id }
+    
+    premium: registrations(
+      first: 50000
+      where: { expiryDate_gt: "${premiumStart}", expiryDate_lt: "${graceStart}" }
+    ) { id }
+    
+    available: registrations(
+      first: 50000
+      where: { expiryDate_gt: "${availableStart}", expiryDate_lt: "${premiumStart}" }
+    ) { id }
+  }`
+
+  const json = (await querySubgraph(query)) as any
+
+  return {
+    grace: json.data?.grace?.length ?? 0,
+    premium: json.data?.premium?.length ?? 0,
+    available: json.data?.available?.length ?? 0,
+  }
+}
+
+
+================================================================================
+PATH: src/types/ens.ts
+--------------------------------------------------------------------------------
+// Raw data from The Graph subgraph
+export interface SubgraphRegistration {
+  id: string                   // registration ID — needed for cursor pagination
+  expiryDate: string           // Unix timestamp as string e.g. "1714752524"
+  domain: {
+    name: string | null        // e.g. "vitalik.eth" (null for some domains)
+    labelName: string | null   // e.g. "vitalik"
+    labelhash: string
+  }
+  registrant: {
+    id: string                 // owner wallet address
+  } | null
+}
+
+export interface SubgraphResponse {
+  data: {
+    registrations: SubgraphRegistration[]
+  }
+  errors?: { message: string }[]
+}
+
+// Processed domain used in UI
+export interface ExpiringDomain {
+  id: string                   // registration ID for keying + cursor
+  name: string                 // "vitalik.eth"
+  labelName: string            // "vitalik"
+  labelhash: string
+  owner: string                // "0x..."
+  expiryDate: number           // Unix timestamp (number)
+  phase: ExpiryPhase
+  daysUntilAvailable: number
+  characterCount: number
+  hasNumbers: boolean
+  hasEmoji: boolean
+}
+
+export type ExpiryPhase = 'grace' | 'premium' | 'available'
+
+export interface PhaseWindow {
+  gt: string   // expiryDate_gt param
+  lt: string   // expiryDate_lt param
+}
+
+export interface FetchExpiringOptions {
+  phase: ExpiryPhase
+  cursor?: {
+    expiryDate: string
+    id: string
+  }
+  minLength?: number
+  maxLength?: number
+  expiresWithinDays?: number
+  englishOnly?: boolean
+  hideEmojiDomains?: boolean
+}
+
+// Cursor returned from each page for pagination
+export interface PageCursor {
+  expiryDate: string
+  id: string
+}
+
+
+================================================================================
+PATH: src/utils/ens.ts
+--------------------------------------------------------------------------------
+export function truncateAddress(address: string): string {
+  if (!address || address.length < 10) return address
+  return `${address.slice(0, 6)}...${address.slice(-4)}`
+}
+
+export function ensAppUrl(name: string): string {
+  return `https://app.ens.domains/${name}`
+}
+
+export function etherscanUrl(address: string): string {
+  return `https://etherscan.io/address/${address}`
+}
+
+export function isPureNumeric(label: string): boolean {
+  return /^\d+$/.test(label)
+}
+
+export function isPureAlpha(label: string): boolean {
+  return /^[a-z]+$/.test(label)
+}
+
+
+================================================================================
+PATH: src/utils/expiry.ts
+--------------------------------------------------------------------------------
+import { ExpiryPhase, PhaseWindow, SubgraphRegistration, ExpiringDomain } from '@/types/ens'
+
+export const GRACE_PERIOD_SECONDS = 90 * 24 * 60 * 60   // 90 days
+export const PREMIUM_PERIOD_SECONDS = 21 * 24 * 60 * 60  // 21 days
+
+// Get the time window for a phase to pass to the subgraph
+export function getPhaseWindow(phase: ExpiryPhase): PhaseWindow {
+  const now = Math.floor(Date.now() / 1000)
+
+  switch (phase) {
+    case 'grace':
+      return {
+        gt: String(now - GRACE_PERIOD_SECONDS),
+        lt: String(now),
+      }
+    case 'premium':
+      return {
+        gt: String(now - GRACE_PERIOD_SECONDS - PREMIUM_PERIOD_SECONDS),
+        lt: String(now - GRACE_PERIOD_SECONDS),
+      }
+    case 'available':
+      return {
+        gt: String(now - GRACE_PERIOD_SECONDS - PREMIUM_PERIOD_SECONDS - 30 * 24 * 60 * 60),
+        lt: String(now - GRACE_PERIOD_SECONDS - PREMIUM_PERIOD_SECONDS),
+      }
+  }
+}
+
+// Calculate what phase a domain is in from its raw expiry timestamp
+export function getPhaseFromExpiry(expiryTimestamp: number): ExpiryPhase {
+  const now = Math.floor(Date.now() / 1000)
+  const graceEnds = expiryTimestamp + GRACE_PERIOD_SECONDS
+  const availableAt = graceEnds + PREMIUM_PERIOD_SECONDS
+
+  if (now < graceEnds) return 'grace'
+  if (now < availableAt) return 'premium'
+  return 'available'
+}
+
+// Days until a domain is freely registerable
+export function getDaysUntilAvailable(expiryTimestamp: number): number {
+  const availableAt = expiryTimestamp + GRACE_PERIOD_SECONDS + PREMIUM_PERIOD_SECONDS
+  const now = Math.floor(Date.now() / 1000)
+  return Math.max(0, Math.ceil((availableAt - now) / 86400))
+}
+
+// Days remaining in grace period
+export function getDaysInGrace(expiryTimestamp: number): number {
+  const graceEnds = expiryTimestamp + GRACE_PERIOD_SECONDS
+  const now = Math.floor(Date.now() / 1000)
+  return Math.max(0, Math.ceil((graceEnds - now) / 86400))
+}
+
+// Human readable time format
+export function formatTimeAgo(timestamp: number): string {
+  const now = Math.floor(Date.now() / 1000)
+  const diff = now - timestamp
+  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`
+  return `${Math.floor(diff / 86400)}d ago`
+}
+
+export function formatExpiryDate(timestamp: number): string {
+  return new Date(timestamp * 1000).toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  })
+}
+
+// Transform raw subgraph registration into UI-ready ExpiringDomain
+export function transformRegistration(reg: SubgraphRegistration): ExpiringDomain | null {
+  const labelName = reg.domain.labelName
+  const name = reg.domain.name
+
+  if (!labelName || !name) return null
+
+  const expiryDate = parseInt(reg.expiryDate)
+  const phase = getPhaseFromExpiry(expiryDate)
+  const daysUntilAvailable = getDaysUntilAvailable(expiryDate)
+
+  const hasNumbers = /\d/.test(labelName)
+  const hasEmoji = /\p{Emoji}/u.test(labelName)
+
+  return {
+    id: reg.id,
+    name,
+    labelName,
+    labelhash: reg.domain.labelhash,
+    owner: reg.registrant?.id ?? '0x0000000000000000000000000000000000000000',
+    expiryDate,
+    phase,
+    daysUntilAvailable,
+    characterCount: [...labelName].length,
+    hasNumbers,
+    hasEmoji,
+  }
+}
+
+
+================================================================================
+PATH: tailwind.config.ts
+--------------------------------------------------------------------------------
+import type { Config } from 'tailwindcss'
+
+const config: Config = {
+  content: ['./src/**/*.{js,ts,jsx,tsx,mdx}'],
+  theme: {
+    extend: {
+      fontFamily: {
+        mono: ['var(--font-mono)', 'monospace'],
+        display: ['var(--font-display)', 'serif'],
+      },
+      colors: {
+        terminal: {
+          bg: '#0a0a0f',
+          surface: '#111118',
+          border: '#1e1e2e',
+          text: '#e2e2f0',
+          muted: '#6b6b8a',
+          accent: '#7c6af7',
+          grace: '#f59e0b',
+          premium: '#ec4899',
+          available: '#10b981',
+        },
+      },
+    },
+  },
+  plugins: [],
+}
+
+export default config
+
+
+================================================================================
+PATH: tsconfig.json
+--------------------------------------------------------------------------------
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "lib": ["dom", "dom.iterable", "esnext"],
+    "allowJs": false,
+    "skipLibCheck": true,
+    "strict": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "jsx": "preserve",
+    "incremental": true,
+    "plugins": [{ "name": "next" }],
+    "paths": {
+      "@/*": ["./src/*"]
+    }
+  },
+  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
+  "exclude": ["node_modules"]
+}
+
+
