@@ -1,10 +1,7 @@
-import type { NextConfig } from 'next'
-
-const nextConfig: NextConfig = {
-  // Required for Fly.io Dockerfile — generates a standalone Node.js server
+/** @type {import('next').NextConfig} */
+const nextConfig = {
   output: 'standalone',
 
-  // Security headers
   headers: async () => [
     {
       source: '/(.*)',
@@ -16,7 +13,6 @@ const nextConfig: NextConfig = {
     },
   ],
 
-  // Prevent accidental exposure of server env vars
   serverExternalPackages: [],
 }
 
