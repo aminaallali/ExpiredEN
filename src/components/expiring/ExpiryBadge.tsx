@@ -1,9 +1,27 @@
-import { formatExpiryDate } from '@/utils/expiry'
+import type { ExpiringDomain } from '@/types/ens'
+import { formatExpiryDate, getDaysInGrace } from '@/utils/expiry'
 
-export default function ExpiryBadge({ expiryDate }: { expiryDate: number }) {
+export default function ExpiryBadge({ domain }: { domain: ExpiringDomain }) {
+  if (domain.phase === 'grace') {
+    const days = getDaysInGrace(domain.expiryDate)
+    return (
+      <span className="text-xs px-2 py-0.5 rounded bg-terminal-grace/10 text-terminal-grace border border-terminal-grace/30">
+        {days}d in grace
+      </span>
+    )
+  }
+
+  if (domain.phase === 'premium') {
+    return (
+      <span className="text-xs px-2 py-0.5 rounded bg-terminal-premium/10 text-terminal-premium border border-terminal-premium/30">
+        {domain.daysUntilAvailable}d until free
+      </span>
+    )
+  }
+
   return (
-    <span className="rounded bg-terminal-surface px-2 py-1 text-xs text-terminal-muted">
-      {formatExpiryDate(expiryDate)}
+    <span className="text-xs px-2 py-0.5 rounded bg-terminal-available/10 text-terminal-available border border-terminal-available/30">
+      Available now
     </span>
   )
 }
