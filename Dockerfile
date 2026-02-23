@@ -1,21 +1,40 @@
-FROM node:20-alpine AS deps
+# Stage 1: Install dependencies
+FROM node:18-alpine AS deps
 WORKDIR /app
-COPY package*.json ./
+COPY package.json package-lock.json* ./
 RUN npm ci
 
-FROM node:20-alpine AS builder
+# Stage 2: Build the application
+FROM node:18-alpine AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
+
+# Build args become env vars at build time only
+ARG GRAPH_API_KEY
+ENV GRAPH_API_KEY=$GRAPH_API_KEY
+
 RUN npm run build
 
-FROM node:20-alpine AS runner
+# Stage 3: Production runner
+FROM node:18-alpine AS runner
 WORKDIR /app
+
 ENV NODE_ENV=production
-ENV PORT=8080
-COPY --from=builder /app/.next ./.next
+
+# Don't run as root
+RUN addgroup --system --gid 1001 nodejs
+RUN adduser --system --uid 1001 nextjs
+
+# Copy only what's needed to run
 COPY --from=builder /app/public ./public
-COPY --from=builder /app/package*.json ./
-COPY --from=builder /app/node_modules ./node_modules
-EXPOSE 8080
-CMD ["npm", "start"]
+COPY --from=builder /app/.next/standalone ./
+COPY --from=builder /app/.next/static ./.next/static
+
+USER nextjs
+
+EXPOSE 3000
+ENV PORT=3000
+ENV HOSTNAME="0.0.0.0"
+
+CMD ["node", "server.js"]
