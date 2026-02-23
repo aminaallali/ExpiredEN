@@ -9,6 +9,7 @@ interface PageProps {
     minLen?: string
     maxLen?: string
     maxDays?: string
+    expiresWithinDays?: string
     englishOnly?: string
     hideEmoji?: string
     sort?: string
@@ -26,7 +27,11 @@ export default async function ExpiringPage({ searchParams }: PageProps) {
 
   const minLength = params.minLen ? parseInt(params.minLen) : undefined
   const maxLength = params.maxLen ? parseInt(params.maxLen) : undefined
-  const maxDaysLeft = params.maxDays ? parseInt(params.maxDays) : undefined
+  const maxDaysLeft = params.maxDays
+    ? parseInt(params.maxDays)
+    : params.expiresWithinDays
+    ? parseInt(params.expiresWithinDays)
+    : undefined
   const englishOnly = params.englishOnly === '1'
   const hideEmojiDomains = params.hideEmoji === '1'
 

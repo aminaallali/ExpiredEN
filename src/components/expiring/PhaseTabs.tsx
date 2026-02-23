@@ -53,7 +53,11 @@ export function PhaseTabs({
 
     if (localMinLen) params.set('minLen', localMinLen)
     if (localMaxLen) params.set('maxLen', localMaxLen)
-    if (localMaxDays) params.set('maxDays', localMaxDays)
+    if (localMaxDays) {
+      params.set('maxDays', localMaxDays)
+      // Compatibility with older URL param naming in other branches
+      params.set('expiresWithinDays', localMaxDays)
+    }
     if (localEnglish) params.set('englishOnly', '1')
     if (localHideEmoji) params.set('hideEmoji', '1')
     if (localSort !== 'ending-soon') params.set('sort', localSort)

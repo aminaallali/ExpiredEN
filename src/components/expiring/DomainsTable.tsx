@@ -12,6 +12,7 @@ interface Props {
   minLength?: number
   maxLength?: number
   maxDaysLeft?: number
+  expiresWithinDays?: number
   englishOnly?: boolean
   hideEmojiDomains?: boolean
   sortDirection?: 'asc' | 'desc'
@@ -22,6 +23,7 @@ export default function DomainsTable({
   minLength,
   maxLength,
   maxDaysLeft,
+  expiresWithinDays,
   englishOnly,
   hideEmojiDomains,
   sortDirection = 'asc',
@@ -39,7 +41,7 @@ export default function DomainsTable({
     phase,
     minLength,
     maxLength,
-    maxDaysLeft,
+    maxDaysLeft: maxDaysLeft ?? expiresWithinDays,
     englishOnly,
     hideEmojiDomains,
     sortDirection,
