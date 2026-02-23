@@ -1,5 +1,6 @@
 'use client'
 
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useRouter, usePathname, useSearchParams } from 'next/navigation'
 import { ExpiryPhase } from '@/types/ens'
 import DomainsTable from './DomainsTable'
@@ -19,6 +20,35 @@ const TABS: { label: string; value: ExpiryPhase }[] = [
   { label: 'Available', value: 'available' },
 ]
 
+function useDebouncedParam(
+  key: string,
+  initialValue: string,
+  updateParam: (key: string, value?: string) => void,
+  delay = 400
+) {
+  const [local, setLocal] = useState(initialValue)
+  const timerRef = useRef<ReturnType<typeof setTimeout>>()
+
+  useEffect(() => {
+    setLocal(initialValue)
+  }, [initialValue])
+
+  const onChange = useCallback(
+    (value: string) => {
+      setLocal(value)
+      clearTimeout(timerRef.current)
+      timerRef.current = setTimeout(() => {
+        updateParam(key, value || undefined)
+      }, delay)
+    },
+    [key, updateParam, delay]
+  )
+
+  useEffect(() => () => clearTimeout(timerRef.current), [])
+
+  return [local, onChange] as const
+}
+
 export function PhaseTabs({
   activePhase,
   minLength,
@@ -37,12 +67,31 @@ export function PhaseTabs({
     router.push(`${pathname}?${params.toString()}`)
   }
 
-  function updateParam(key: string, value?: string) {
-    const params = new URLSearchParams(searchParams.toString())
-    if (!value) params.delete(key)
-    else params.set(key, value)
-    router.push(`${pathname}?${params.toString()}`)
-  }
+  const updateParam = useCallback(
+    (key: string, value?: string) => {
+      const params = new URLSearchParams(searchParams.toString())
+      if (!value) params.delete(key)
+      else params.set(key, value)
+      router.push(`${pathname}?${params.toString()}`)
+    },
+    [router, pathname, searchParams]
+  )
+
+  const [localMin, setLocalMin] = useDebouncedParam(
+    'minLen',
+    minLength?.toString() ?? '',
+    updateParam
+  )
+  const [localMax, setLocalMax] = useDebouncedParam(
+    'maxLen',
+    maxLength?.toString() ?? '',
+    updateParam
+  )
+  const [localExpires, setLocalExpires] = useDebouncedParam(
+    'expiresIn',
+    expiresWithinDays?.toString() ?? '',
+    updateParam
+  )
 
   return (
     <div>
@@ -51,6 +100,8 @@ export function PhaseTabs({
           <button
             key={tab.value}
             onClick={() => setPhase(tab.value)}
+            aria-selected={activePhase === tab.value}
+            role="tab"
             className={`px-4 py-3 text-sm transition-colors sm:px-6 ${
               activePhase === tab.value
                 ? 'border-b-2 border-terminal-accent text-terminal-accent'
@@ -68,8 +119,8 @@ export function PhaseTabs({
           <input
             type="number"
             min={1}
-            value={minLength ?? ''}
-            onChange={(e) => updateParam('minLen', e.target.value || undefined)}
+            value={localMin}
+            onChange={(e) => setLocalMin(e.target.value)}
             className="mt-1 w-full rounded border border-terminal-border bg-terminal-bg px-2 py-2 text-sm text-terminal-text"
           />
         </label>
@@ -79,8 +130,8 @@ export function PhaseTabs({
           <input
             type="number"
             min={1}
-            value={maxLength ?? ''}
-            onChange={(e) => updateParam('maxLen', e.target.value || undefined)}
+            value={localMax}
+            onChange={(e) => setLocalMax(e.target.value)}
             className="mt-1 w-full rounded border border-terminal-border bg-terminal-bg px-2 py-2 text-sm text-terminal-text"
           />
         </label>
@@ -90,8 +141,8 @@ export function PhaseTabs({
           <input
             type="number"
             min={1}
-            value={expiresWithinDays ?? ''}
-            onChange={(e) => updateParam('expiresIn', e.target.value || undefined)}
+            value={localExpires}
+            onChange={(e) => setLocalExpires(e.target.value)}
             className="mt-1 w-full rounded border border-terminal-border bg-terminal-bg px-2 py-2 text-sm text-terminal-text"
           />
         </label>

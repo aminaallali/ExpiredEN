@@ -4,30 +4,28 @@ import { StatsBar } from '@/components/expiring/StatsBar'
 import { ExpiryPhase } from '@/types/ens'
 
 interface PageProps {
-  searchParams: Promise<{
+  searchParams: {
     phase?: string
     minLen?: string
     maxLen?: string
     expiresIn?: string
     englishOnly?: string
     hideEmoji?: string
-  }>
+  }
 }
 
-export default async function ExpiringPage({ searchParams }: PageProps) {
-  const params = await searchParams
-
-  const phase = (['grace', 'premium', 'available'].includes(params.phase ?? '')
-    ? params.phase
+export default function ExpiringPage({ searchParams }: PageProps) {
+  const phase = (['grace', 'premium', 'available'].includes(searchParams.phase ?? '')
+    ? searchParams.phase
     : 'grace') as ExpiryPhase
 
-  const minLength = params.minLen ? parseInt(params.minLen) : undefined
-  const maxLength = params.maxLen ? parseInt(params.maxLen) : undefined
-  const expiresWithinDays = params.expiresIn
-    ? parseInt(params.expiresIn)
+  const minLength = searchParams.minLen ? parseInt(searchParams.minLen) : undefined
+  const maxLength = searchParams.maxLen ? parseInt(searchParams.maxLen) : undefined
+  const expiresWithinDays = searchParams.expiresIn
+    ? parseInt(searchParams.expiresIn)
     : undefined
-  const englishOnly = params.englishOnly === '1'
-  const hideEmojiDomains = params.hideEmoji === '1'
+  const englishOnly = searchParams.englishOnly === '1'
+  const hideEmojiDomains = searchParams.hideEmoji === '1'
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-8">
