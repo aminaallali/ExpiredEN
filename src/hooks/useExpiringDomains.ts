@@ -9,9 +9,10 @@ interface UseExpiringDomainsOptions {
   phase: ExpiryPhase
   minLength?: number
   maxLength?: number
-  expiresWithinDays?: number
+  maxDaysLeft?: number
   englishOnly?: boolean
   hideEmojiDomains?: boolean
+  sortDirection?: 'asc' | 'desc'
 }
 
 interface ExpiringDomainsPage {
@@ -24,36 +25,39 @@ export function useExpiringDomains({
   phase,
   minLength,
   maxLength,
-  expiresWithinDays,
+  maxDaysLeft,
   englishOnly,
   hideEmojiDomains,
+  sortDirection = 'asc',
 }: UseExpiringDomainsOptions) {
   return useInfiniteQuery<ExpiringDomainsPage, Error>({
+    // Include ALL params in queryKey so cache invalidates on any change
     queryKey: [
       'expiring-domains',
       phase,
       minLength,
       maxLength,
-      expiresWithinDays,
+      maxDaysLeft,
       englishOnly,
       hideEmojiDomains,
+      sortDirection,
     ],
 
     queryFn: async ({ pageParam }): Promise<ExpiringDomainsPage> => {
       const cursor = pageParam as PageCursor | undefined
 
-      const { registrations, nextCursor } = await fetchExpiringRegistrations({
-        phase,
-        cursor,
-        minLength,
-        maxLength,
-        expiresWithinDays,
-        englishOnly,
-        hideEmojiDomains,
-      })
+      const { registrations, nextCursor } =
+        await fetchExpiringRegistrations({
+          phase,
+          cursor,
+          minLength,
+          maxLength,
+          maxDaysLeft,
+          englishOnly,
+          hideEmojiDomains,
+          sortDirection,
+        })
 
-      // Transform raw registrations into UI-ready domains
-      // Filter out any that have no readable name
       const domains: ExpiringDomain[] = registrations
         .map(transformRegistration)
         .filter((d): d is ExpiringDomain => d !== null)
@@ -70,10 +74,7 @@ export function useExpiringDomains({
     getNextPageParam: (lastPage): PageCursor | undefined =>
       lastPage.hasMore ? (lastPage.nextCursor ?? undefined) : undefined,
 
-    // Refetch every 2 minutes in background to keep data fresh
     refetchInterval: 2 * 60 * 1000,
-
-    // Don't refetch all pages — only the first one on background refresh
     refetchOnMount: true,
   })
 }

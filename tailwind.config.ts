@@ -5,25 +5,25 @@ const config: Config = {
   theme: {
     extend: {
       fontFamily: {
-        mono: ['var(--font-mono)', 'monospace'],
-        display: ['var(--font-display)', 'serif'],
+        sans: ['var(--font-sans)', 'sans-serif'],
       },
       colors: {
-        terminal: {
-          bg: '#0a0a0f',
-          surface: '#111118',
-          border: '#1e1e2e',
-          text: '#e2e2f0',
-          muted: '#6b6b8a',
-          accent: '#7c6af7',
-          grace: '#f59e0b',
-          premium: '#ec4899',
-          available: '#10b981',
+        brand: {
+          bg: '#000000',
+          surface: '#1A1A1A',
+          'surface-light': '#2A2A2A',
+          yellow: '#FCEB54',
+          cream: '#F5F4E8',
+          text: '#FFFFFF',
+          muted: '#88888A',
+          dark: '#111111',
         },
       },
+      borderRadius: {
+        '4xl': '32px',
+      }
     },
   },
   plugins: [],
 }
-
 export default config

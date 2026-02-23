@@ -1,34 +1,36 @@
 // Raw data from The Graph subgraph
 export interface SubgraphRegistration {
-  id: string                   // registration ID — needed for cursor pagination
-  expiryDate: string           // Unix timestamp as string e.g. "1714752524"
+  id: string
+  expiryDate: string
   domain: {
-    name: string | null        // e.g. "vitalik.eth" (null for some domains)
-    labelName: string | null   // e.g. "vitalik"
+    name: string | null
+    labelName: string | null
     labelhash: string
   }
   registrant: {
-    id: string                 // owner wallet address
+    id: string
   } | null
 }
 
 export interface SubgraphResponse {
   data: {
     registrations: SubgraphRegistration[]
+    [key: string]: SubgraphRegistration[] | undefined
   }
   errors?: { message: string }[]
 }
 
 // Processed domain used in UI
 export interface ExpiringDomain {
-  id: string                   // registration ID for keying + cursor
-  name: string                 // "vitalik.eth"
-  labelName: string            // "vitalik"
+  id: string
+  name: string
+  labelName: string
   labelhash: string
-  owner: string                // "0x..."
-  expiryDate: number           // Unix timestamp (number)
+  owner: string
+  expiryDate: number
   phase: ExpiryPhase
   daysUntilAvailable: number
+  daysLeftInPhase: number
   characterCount: number
   hasNumbers: boolean
   hasEmoji: boolean
@@ -36,25 +38,24 @@ export interface ExpiringDomain {
 
 export type ExpiryPhase = 'grace' | 'premium' | 'available'
 
+export type SortOption = 'ending-soon' | 'most-time'
+
 export interface PhaseWindow {
-  gt: string   // expiryDate_gt param
-  lt: string   // expiryDate_lt param
+  gt: string
+  lt: string
 }
 
 export interface FetchExpiringOptions {
   phase: ExpiryPhase
-  cursor?: {
-    expiryDate: string
-    id: string
-  }
+  cursor?: PageCursor
   minLength?: number
   maxLength?: number
-  expiresWithinDays?: number
+  maxDaysLeft?: number
   englishOnly?: boolean
   hideEmojiDomains?: boolean
+  sortDirection?: 'asc' | 'desc'
 }
 
-// Cursor returned from each page for pagination
 export interface PageCursor {
   expiryDate: string
   id: string
