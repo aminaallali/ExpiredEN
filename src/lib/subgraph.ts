@@ -8,7 +8,6 @@ import { getPhaseWindow } from '@/utils/expiry'
 import { ENGLISH_WORDS } from '@/data/englishWords'
 
 const PAGE_SIZE = 100
-const SUBGRAPH_MAX = 1000
 
 // All queries go through our own API route — API key stays server-side
 async function querySubgraph(query: string): Promise<SubgraphResponse> {
@@ -119,39 +118,58 @@ export async function fetchExpiringRegistrations({
   return { registrations: results, nextCursor }
 }
 
+async function countPhaseRegistrations(gt: string, lt: string): Promise<number> {
+  let total = 0
+  let lastId = ''
+
+  while (true) {
+    const idFilter = lastId ? `id_gt: "${lastId}",` : ''
+
+    const query = `{
+      registrations(
+        first: 1000
+        orderBy: id
+        orderDirection: asc
+        where: {
+          ${idFilter}
+          expiryDate_gt: "${gt}"
+          expiryDate_lt: "${lt}"
+        }
+      ) { id }
+    }`
+
+    const json = await querySubgraph(query)
+    const batch = json.data.registrations
+
+    total += batch.length
+
+    if (batch.length < 1000) break
+
+    lastId = batch[batch.length - 1].id
+
+    // Safety: cap at 50 iterations (50,000 domains) to prevent infinite loops
+    if (total >= 50000) break
+  }
+
+  return total
+}
+
 export async function fetchPhaseCounts(): Promise<{
   grace: number
   premium: number
   available: number
 }> {
   const now = Math.floor(Date.now() / 1000)
-  const graceStart = now - 90 * 24 * 60 * 60
-  const premiumStart = graceStart - 21 * 24 * 60 * 60
-  const availableStart = premiumStart - 30 * 24 * 60 * 60
+  const graceStart = String(now - 90 * 24 * 60 * 60)
+  const premiumStart = String(Number(graceStart) - 21 * 24 * 60 * 60)
+  const availableStart = String(Number(premiumStart) - 30 * 24 * 60 * 60)
+  const nowStr = String(now)
 
-  // The Graph enforces a max of 1000 items per query.
-  const query = `{
-    grace: registrations(
-      first: ${SUBGRAPH_MAX}
-      where: { expiryDate_gt: "${graceStart}", expiryDate_lt: "${now}" }
-    ) { id }
-    
-    premium: registrations(
-      first: ${SUBGRAPH_MAX}
-      where: { expiryDate_gt: "${premiumStart}", expiryDate_lt: "${graceStart}" }
-    ) { id }
-    
-    available: registrations(
-      first: ${SUBGRAPH_MAX}
-      where: { expiryDate_gt: "${availableStart}", expiryDate_lt: "${premiumStart}" }
-    ) { id }
-  }`
+  const [grace, premium, available] = await Promise.all([
+    countPhaseRegistrations(graceStart, nowStr),
+    countPhaseRegistrations(premiumStart, graceStart),
+    countPhaseRegistrations(availableStart, premiumStart),
+  ])
 
-  const json = (await querySubgraph(query)) as any
-
-  return {
-    grace: json.data?.grace?.length ?? 0,
-    premium: json.data?.premium?.length ?? 0,
-    available: json.data?.available?.length ?? 0,
-  }
+  return { grace, premium, available }
 }
