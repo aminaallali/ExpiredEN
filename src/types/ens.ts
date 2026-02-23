@@ -49,6 +49,9 @@ export interface FetchExpiringOptions {
   }
   minLength?: number
   maxLength?: number
+  expiresWithinDays?: number
+  englishOnly?: boolean
+  hideEmojiDomains?: boolean
 }
 
 // Cursor returned from each page for pagination

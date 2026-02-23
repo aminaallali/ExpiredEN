@@ -9,6 +9,9 @@ interface UseExpiringDomainsOptions {
   phase: ExpiryPhase
   minLength?: number
   maxLength?: number
+  expiresWithinDays?: number
+  englishOnly?: boolean
+  hideEmojiDomains?: boolean
 }
 
 interface ExpiringDomainsPage {
@@ -21,9 +24,20 @@ export function useExpiringDomains({
   phase,
   minLength,
   maxLength,
+  expiresWithinDays,
+  englishOnly,
+  hideEmojiDomains,
 }: UseExpiringDomainsOptions) {
   return useInfiniteQuery<ExpiringDomainsPage, Error>({
-    queryKey: ['expiring-domains', phase, minLength, maxLength],
+    queryKey: [
+      'expiring-domains',
+      phase,
+      minLength,
+      maxLength,
+      expiresWithinDays,
+      englishOnly,
+      hideEmojiDomains,
+    ],
 
     queryFn: async ({ pageParam }): Promise<ExpiringDomainsPage> => {
       const cursor = pageParam as PageCursor | undefined
@@ -33,6 +47,9 @@ export function useExpiringDomains({
         cursor,
         minLength,
         maxLength,
+        expiresWithinDays,
+        englishOnly,
+        hideEmojiDomains,
       })
 
       // Transform raw registrations into UI-ready domains

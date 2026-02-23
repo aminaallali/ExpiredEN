@@ -5,6 +5,7 @@ import {
   PageCursor,
 } from '@/types/ens'
 import { getPhaseWindow } from '@/utils/expiry'
+import { ENGLISH_WORDS } from '@/data/englishWords'
 
 const PAGE_SIZE = 100
 
@@ -29,6 +30,9 @@ export async function fetchExpiringRegistrations({
   cursor,
   minLength,
   maxLength,
+  expiresWithinDays,
+  englishOnly,
+  hideEmojiDomains,
 }: FetchExpiringOptions): Promise<{
   registrations: SubgraphRegistration[]
   nextCursor: PageCursor | null
@@ -68,12 +72,34 @@ export async function fetchExpiringRegistrations({
 
   let results = json.data.registrations
 
-  // Client-side length filtering (subgraph can't filter by name length)
-  if (minLength !== undefined || maxLength !== undefined) {
+  // Client-side filtering (subgraph can't filter by label-derived fields)
+  if (
+    minLength !== undefined ||
+    maxLength !== undefined ||
+    expiresWithinDays !== undefined ||
+    englishOnly ||
+    hideEmojiDomains
+  ) {
+    const now = Math.floor(Date.now() / 1000)
+    const maxExpiry =
+      expiresWithinDays !== undefined
+        ? now + expiresWithinDays * 24 * 60 * 60
+        : undefined
+
     results = results.filter((reg) => {
-      const len = reg.domain.labelName ? [...reg.domain.labelName].length : 0
+      const label = reg.domain.labelName?.toLowerCase() ?? ''
+      const len = label ? [...label].length : 0
+
       if (minLength && len < minLength) return false
       if (maxLength && len > maxLength) return false
+      if (maxExpiry && Number(reg.expiryDate) > maxExpiry) return false
+
+      if (hideEmojiDomains && /\p{Emoji}/u.test(label)) return false
+
+      if (englishOnly) {
+        if (!ENGLISH_WORDS.has(label)) return false
+      }
+
       return true
     })
   }
@@ -99,21 +125,20 @@ export async function fetchPhaseCounts(): Promise<{
   const premiumStart = graceStart - 21 * 24 * 60 * 60
   const availableStart = premiumStart - 30 * 24 * 60 * 60
 
-  // Use first: 1000 to get better count estimates
-  // Still capped — UI will show "1000+" if maxed
+  // Larger cap improves count estimates for busy phases.
   const query = `{
     grace: registrations(
-      first: 1000
+      first: 50000
       where: { expiryDate_gt: "${graceStart}", expiryDate_lt: "${now}" }
     ) { id }
     
     premium: registrations(
-      first: 1000
+      first: 50000
       where: { expiryDate_gt: "${premiumStart}", expiryDate_lt: "${graceStart}" }
     ) { id }
     
     available: registrations(
-      first: 1000
+      first: 50000
       where: { expiryDate_gt: "${availableStart}", expiryDate_lt: "${premiumStart}" }
     ) { id }
   }`

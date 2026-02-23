@@ -5,21 +5,39 @@ import { ExpiryPhase } from '@/types/ens'
 import DomainRow from './DomainRow'
 import EmptyState from '@/components/ui/EmptyState'
 import Spinner from '@/components/ui/Spinner'
+import ExpiryBadge from './ExpiryBadge'
 
 interface Props {
   phase: ExpiryPhase
   minLength?: number
   maxLength?: number
+  expiresWithinDays?: number
+  englishOnly?: boolean
+  hideEmojiDomains?: boolean
 }
 
-export default function DomainsTable({ phase, minLength, maxLength }: Props) {
+export default function DomainsTable({
+  phase,
+  minLength,
+  maxLength,
+  expiresWithinDays,
+  englishOnly,
+  hideEmojiDomains,
+}: Props) {
   const {
     data,
     isLoading,
     fetchNextPage,
     hasNextPage,
     isFetchingNextPage,
-  } = useExpiringDomains({ phase, minLength, maxLength })
+  } = useExpiringDomains({
+    phase,
+    minLength,
+    maxLength,
+    expiresWithinDays,
+    englishOnly,
+    hideEmojiDomains,
+  })
 
   const domains = data?.pages.flatMap((p) => p.domains) ?? []
 
@@ -28,7 +46,26 @@ export default function DomainsTable({ phase, minLength, maxLength }: Props) {
 
   return (
     <div className="space-y-3">
-      <table className="w-full border-collapse overflow-hidden rounded border border-terminal-border text-sm">
+      <div className="rounded border border-terminal-border bg-terminal-surface/30 px-3 py-2 text-xs text-terminal-muted">
+        Showing {domains.length} domains
+      </div>
+
+      <div className="space-y-2 md:hidden">
+        {domains.map((domain) => (
+          <div
+            key={domain.id}
+            className="rounded border border-terminal-border bg-terminal-surface p-3"
+          >
+            <div className="font-medium text-terminal-text break-all">{domain.name}</div>
+            <div className="mt-1 text-xs capitalize text-terminal-muted">{domain.phase}</div>
+            <div className="mt-2 text-xs">
+              <ExpiryBadge expiryDate={domain.expiryDate} />
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <table className="hidden w-full border-collapse overflow-hidden rounded border border-terminal-border text-sm md:table">
         <thead className="bg-terminal-surface text-left text-terminal-muted">
           <tr>
             <th className="p-3">Name</th>
