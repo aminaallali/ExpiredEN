@@ -1,43 +1,56 @@
-'use client';
+'use client'
 
-import { useState } from 'react';
-import DomainRow from './DomainRow';
-import PhaseFilters, { type PhaseValue } from './PhaseFilters';
-import EmptyState from '@/components/ui/EmptyState';
-import Spinner from '@/components/ui/Spinner';
-import { useExpiringDomains } from '@/hooks/useExpiringDomains';
+import { useExpiringDomains } from '@/hooks/useExpiringDomains'
+import { ExpiryPhase } from '@/types/ens'
+import DomainRow from './DomainRow'
+import EmptyState from '@/components/ui/EmptyState'
+import Spinner from '@/components/ui/Spinner'
 
-export default function DomainsTable() {
-  const [phase, setPhase] = useState<PhaseValue>('all');
-  const { domains, isLoading, fetchNextPage, hasNextPage, isFetchingNextPage } = useExpiringDomains();
+interface Props {
+  phase: ExpiryPhase
+  minLength?: number
+  maxLength?: number
+}
 
-  const filtered = phase === 'all' ? domains : domains.filter((d) => d.phase === phase);
+export default function DomainsTable({ phase, minLength, maxLength }: Props) {
+  const {
+    data,
+    isLoading,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useExpiringDomains({ phase, minLength, maxLength })
 
-  if (isLoading) return <Spinner label="Loading domains..." />;
-  if (!filtered.length) return <EmptyState title="No domains found" description="Try another filter." />;
+  const domains = data?.pages.flatMap((p) => p.domains) ?? []
+
+  if (isLoading) return <Spinner label="Loading domains..." />
+  if (!domains.length) return <EmptyState title="No domains found" description="Try another phase or filter." />
 
   return (
     <div className="space-y-3">
-      <PhaseFilters value={phase} onChange={setPhase} />
-      <table className="w-full border-collapse overflow-hidden rounded border border-slate-800 text-sm">
-        <thead className="bg-slate-900 text-left text-slate-300">
+      <table className="w-full border-collapse overflow-hidden rounded border border-terminal-border text-sm">
+        <thead className="bg-terminal-surface text-left text-terminal-muted">
           <tr>
-            <th className="p-2">Name</th>
-            <th className="p-2">Phase</th>
-            <th className="p-2">Expires</th>
+            <th className="p-3">Name</th>
+            <th className="p-3">Phase</th>
+            <th className="p-3">Expires</th>
           </tr>
         </thead>
         <tbody>
-          {filtered.map((domain) => (
+          {domains.map((domain) => (
             <DomainRow key={domain.id} domain={domain} />
           ))}
         </tbody>
       </table>
       {hasNextPage && (
-        <button onClick={() => fetchNextPage()} className="rounded bg-slate-800 px-3 py-2 text-sm" disabled={isFetchingNextPage}>
+        <button
+          onClick={() => fetchNextPage()}
+          disabled={isFetchingNextPage}
+          className="rounded border border-terminal-border bg-terminal-surface px-4 py-2 text-sm text-terminal-muted hover:text-terminal-text transition-colors"
+        >
           {isFetchingNextPage ? 'Loading...' : 'Load more'}
         </button>
       )}
     </div>
-  );
+  )
 }
