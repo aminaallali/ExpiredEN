@@ -7,7 +7,12 @@ export function Header() {
         <Link href="/" className="text-brand-text text-xl font-semibold tracking-tight">
           ENS <span className="text-brand-yellow">Expiring</span>
         </Link>
-        <a href="https://app.ens.domains" target="_blank" rel="noopener noreferrer" className="px-4 py-2 rounded-full bg-brand-surface text-brand-cream text-sm hover:bg-brand-surface-light">
+        <a
+          href="https://app.ens.domains"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="px-4 py-2 rounded-full bg-brand-surface text-brand-cream text-sm hover:bg-brand-surface-light transition-colors"
+        >
           ENS App
         </a>
       </div>
