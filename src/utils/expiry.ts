@@ -80,7 +80,7 @@ export function transformRegistration(reg: SubgraphRegistration): ExpiringDomain
   const daysUntilAvailable = getDaysUntilAvailable(expiryDate)
 
   const hasNumbers = /\d/.test(labelName)
-  const hasEmoji = /\p{Emoji}/u.test(labelName)
+  const hasEmoji = /\p{Extended_Pictographic}/u.test(labelName)
 
   return {
     id: reg.id,

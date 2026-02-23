@@ -15,7 +15,7 @@ const STATS: { label: string; phase: ExpiryPhase; color: string }[] = [
 ]
 
 export function StatsBar({ activePhase }: Props) {
-  const { data } = useQuery({
+  const { data, isLoading } = useQuery({
     queryKey: ['phase-counts'],
     queryFn: fetchPhaseCounts,
     staleTime: 60 * 1000,
@@ -33,13 +33,17 @@ export function StatsBar({ activePhase }: Props) {
           }`}
         >
           <div className="text-xs text-terminal-muted mb-1">{stat.label}</div>
-          <div className={`text-2xl font-bold font-display ${stat.color}`}>
-            {data === undefined
-              ? '—'
-              : data[stat.phase] >= 1000
-              ? '1000+'
-              : data[stat.phase]}
-          </div>
+          {isLoading ? (
+            <div className="h-8 w-16 bg-terminal-border rounded animate-pulse" />
+          ) : (
+            <div className={`text-2xl font-bold font-display ${stat.color}`}>
+              {data === undefined
+                ? '—'
+                : data[stat.phase] >= 1000
+                ? '1000+'
+                : data[stat.phase]}
+            </div>
+          )}
         </div>
       ))}
     </div>

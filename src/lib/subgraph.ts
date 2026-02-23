@@ -8,6 +8,7 @@ import { getPhaseWindow } from '@/utils/expiry'
 import { ENGLISH_WORDS } from '@/data/englishWords'
 
 const PAGE_SIZE = 100
+const SUBGRAPH_MAX = 1000
 
 // All queries go through our own API route — API key stays server-side
 async function querySubgraph(query: string): Promise<SubgraphResponse> {
@@ -24,6 +25,9 @@ async function querySubgraph(query: string): Promise<SubgraphResponse> {
 
   return response.json()
 }
+
+// Use Extended_Pictographic to avoid matching ASCII digits/symbols.
+const EMOJI_REGEX = /\p{Extended_Pictographic}/u
 
 export async function fetchExpiringRegistrations({
   phase,
@@ -94,7 +98,7 @@ export async function fetchExpiringRegistrations({
       if (maxLength && len > maxLength) return false
       if (maxExpiry && Number(reg.expiryDate) > maxExpiry) return false
 
-      if (hideEmojiDomains && /\p{Emoji}/u.test(label)) return false
+      if (hideEmojiDomains && EMOJI_REGEX.test(label)) return false
 
       if (englishOnly) {
         if (!ENGLISH_WORDS.has(label)) return false
@@ -125,20 +129,20 @@ export async function fetchPhaseCounts(): Promise<{
   const premiumStart = graceStart - 21 * 24 * 60 * 60
   const availableStart = premiumStart - 30 * 24 * 60 * 60
 
-  // Larger cap improves count estimates for busy phases.
+  // The Graph enforces a max of 1000 items per query.
   const query = `{
     grace: registrations(
-      first: 50000
+      first: ${SUBGRAPH_MAX}
       where: { expiryDate_gt: "${graceStart}", expiryDate_lt: "${now}" }
     ) { id }
     
     premium: registrations(
-      first: 50000
+      first: ${SUBGRAPH_MAX}
       where: { expiryDate_gt: "${premiumStart}", expiryDate_lt: "${graceStart}" }
     ) { id }
     
     available: registrations(
-      first: 50000
+      first: ${SUBGRAPH_MAX}
       where: { expiryDate_gt: "${availableStart}", expiryDate_lt: "${premiumStart}" }
     ) { id }
   }`
