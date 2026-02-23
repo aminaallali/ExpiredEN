@@ -118,7 +118,7 @@ export async function fetchPhaseCounts(): Promise<{
     ) { id }
   }`
 
-  const json = await querySubgraph(query)
+  const json = (await querySubgraph(query)) as any
 
   return {
     grace: json.data?.grace?.length ?? 0,
