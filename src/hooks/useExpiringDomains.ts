@@ -1,58 +1,62 @@
-'use client';
+'use client'
 
-import { useInfiniteQuery } from '@tanstack/react-query';
-import { fetchSubgraph } from '@/lib/subgraph';
-import type { Domain, DomainPhase } from '@/types/ens';
+import { useInfiniteQuery } from '@tanstack/react-query'
+import { fetchExpiringRegistrations } from '@/lib/subgraph'
+import { transformRegistration } from '@/utils/expiry'
+import { ExpiryPhase, ExpiringDomain, PageCursor } from '@/types/ens'
 
-const QUERY = `
-  query ExpiringDomains($first: Int!, $skip: Int!) {
-    domains(first: $first, skip: $skip, orderBy: expiryDate, orderDirection: asc) {
-      id
-      name
-      expiryDate
-    }
-  }
-`;
-
-type SubgraphResponse = {
-  data: {
-    domains: Array<{ id: string; name: string; expiryDate: string }>;
-  };
-};
-
-const PAGE_SIZE = 20;
-
-function toPhase(expiryDate: number): DomainPhase {
-  const now = Math.floor(Date.now() / 1000);
-  const graceWindow = 90 * 24 * 60 * 60;
-  return expiryDate + graceWindow > now ? 'grace' : 'pending';
+interface UseExpiringDomainsOptions {
+  phase: ExpiryPhase
+  minLength?: number
+  maxLength?: number
 }
 
-export function useExpiringDomains() {
-  const query = useInfiniteQuery({
-    queryKey: ['expiring-domains'],
-    queryFn: async ({ pageParam = 0 }) => {
-      const result = await fetchSubgraph<SubgraphResponse>(QUERY, { first: PAGE_SIZE, skip: pageParam });
-      const domains: Domain[] = result.data.domains.map((domain) => {
-        const expiryDate = Number(domain.expiryDate);
-        return {
-          id: domain.id,
-          name: domain.name,
-          expiryDate,
-          phase: toPhase(expiryDate),
-        };
-      });
+interface ExpiringDomainsPage {
+  domains: ExpiringDomain[]
+  nextCursor: PageCursor | null
+  hasMore: boolean
+}
+
+export function useExpiringDomains({
+  phase,
+  minLength,
+  maxLength,
+}: UseExpiringDomainsOptions) {
+  return useInfiniteQuery<ExpiringDomainsPage, Error>({
+    queryKey: ['expiring-domains', phase, minLength, maxLength],
+
+    queryFn: async ({ pageParam }): Promise<ExpiringDomainsPage> => {
+      const cursor = pageParam as PageCursor | undefined
+
+      const { registrations, nextCursor } = await fetchExpiringRegistrations({
+        phase,
+        cursor,
+        minLength,
+        maxLength,
+      })
+
+      // Transform raw registrations into UI-ready domains
+      // Filter out any that have no readable name
+      const domains: ExpiringDomain[] = registrations
+        .map(transformRegistration)
+        .filter((d): d is ExpiringDomain => d !== null)
+
       return {
         domains,
-        nextCursor: domains.length === PAGE_SIZE ? pageParam + PAGE_SIZE : undefined,
-      };
+        nextCursor,
+        hasMore: nextCursor !== null,
+      }
     },
-    initialPageParam: 0,
-    getNextPageParam: (lastPage) => lastPage.nextCursor,
-  });
 
-  return {
-    ...query,
-    domains: query.data?.pages.flatMap((page) => page.domains) ?? [],
-  };
+    initialPageParam: undefined as PageCursor | undefined,
+
+    getNextPageParam: (lastPage): PageCursor | undefined =>
+      lastPage.hasMore ? (lastPage.nextCursor ?? undefined) : undefined,
+
+    // Refetch every 2 minutes in background to keep data fresh
+    refetchInterval: 2 * 60 * 1000,
+
+    // Don't refetch all pages — only the first one on background refresh
+    refetchOnMount: true,
+  })
 }
