@@ -1,22 +1,13 @@
 import type { Metadata } from 'next'
-import { Space_Mono, Syne } from 'next/font/google'
+import { Plus_Jakarta_Sans } from 'next/font/google'
 import './globals.css'
 import { Providers } from './providers'
 import { Header } from '@/components/layout/Header'
 import { Footer } from '@/components/layout/Footer'
 
-// Load fonts via next/font — no render-blocking CSS imports
-const spaceMono = Space_Mono({
-  weight: ['400', '700'],
+const plusJakarta = Plus_Jakarta_Sans({
   subsets: ['latin'],
-  variable: '--font-mono',
-  display: 'swap',
-})
-
-const syne = Syne({
-  weight: ['400', '600', '700', '800'],
-  subsets: ['latin'],
-  variable: '--font-display',
+  variable: '--font-sans',
   display: 'swap',
 })
 
@@ -43,11 +34,8 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html
-      lang="en"
-      className={`${spaceMono.variable} ${syne.variable}`}
-    >
-      <body className="font-mono">
+    <html lang="en" className={`${plusJakarta.variable}`}>
+      <body className="font-sans bg-brand-bg text-brand-text">
         <Providers>
           <div className="min-h-screen flex flex-col">
             <Header />

@@ -1,79 +1,26 @@
 import type { ExpiringDomain } from '@/types/ens'
 import ExpiryBadge from './ExpiryBadge'
-import { truncateAddress, ensAppUrl, etherscanUrl } from '@/utils/ens'
-import { formatExpiryDate } from '@/utils/expiry'
 
 interface Props {
   domain: ExpiringDomain
-  index: number
+  index?: number
 }
 
-export default function DomainRow({ domain, index }: Props) {
-  const typeLabel = domain.hasEmoji
-    ? '😀'
-    : domain.hasNumbers
-    ? '🔢'
-    : '🔤'
-
-  const typeTitle = domain.hasEmoji
-    ? 'Contains emoji'
-    : domain.hasNumbers
-    ? 'Contains numbers'
-    : 'Letters only'
-
+export default function DomainRow({ domain }: Props) {
   return (
-    <tr
-      className="domain-row border-b border-terminal-border last:border-0 animate-in"
-      style={{ animationDelay: `${Math.min(index * 20, 300)}ms` }}
-    >
-      <td className="p-3">
-        <a
-          href={ensAppUrl(domain.name)}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-terminal-accent hover:underline font-mono text-sm"
-        >
-          {domain.name}
-        </a>
-      </td>
-
-      <td className="p-3 text-terminal-muted text-sm">
-        {domain.characterCount}
-      </td>
-
-      <td className="p-3 text-sm hidden lg:table-cell" title={typeTitle}>
-        {typeLabel}
-      </td>
-
-      <td className="p-3 text-terminal-muted text-xs whitespace-nowrap hidden md:table-cell">
-        {formatExpiryDate(domain.expiryDate)}
-      </td>
-
-      <td className="p-3">
+    <div className="bg-brand-surface border border-brand-surface-light rounded-[24px] p-5 flex items-center justify-between hover:border-brand-yellow/50 transition-colors gap-4">
+      <div className="min-w-0">
+        <div className="bg-brand-yellow text-brand-dark text-[10px] font-bold px-2 py-1 rounded-full inline-block mb-2 uppercase tracking-wider">
+          {domain.phase}
+        </div>
+        <div className="text-xl font-medium text-brand-text break-all">{domain.name}</div>
+      </div>
+      <div className="text-right flex flex-col items-end">
         <ExpiryBadge domain={domain} />
-      </td>
-
-      <td className="p-3 hidden lg:table-cell">
-        <a
-          href={etherscanUrl(domain.owner)}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-terminal-muted text-xs hover:text-terminal-text transition-colors font-mono"
-        >
-          {truncateAddress(domain.owner)}
-        </a>
-      </td>
-
-      <td className="p-3">
-        <a
-          href={ensAppUrl(domain.name)}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-xs px-2 py-1 border border-terminal-accent/40 text-terminal-accent rounded hover:bg-terminal-accent/10 transition-colors whitespace-nowrap"
-        >
-          {domain.phase === 'available' ? 'Register' : 'View'}
-        </a>
-      </td>
-    </tr>
+        <div className="mt-2 text-xs text-brand-muted truncate max-w-[120px]">
+          Owner: {domain.owner.slice(0, 6)}...
+        </div>
+      </div>
+    </div>
   )
 }

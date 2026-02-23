@@ -18,31 +18,28 @@ export default function Error({
     <div className="max-w-7xl mx-auto px-4 py-24">
       <div className="flex flex-col items-center justify-center text-center">
         {/* Error icon */}
-        <div className="w-16 h-16 rounded-full bg-terminal-premium/10 border border-terminal-premium/30 flex items-center justify-center mb-6">
+        <div className="w-16 h-16 rounded-full bg-brand-surface border border-brand-surface-light flex items-center justify-center mb-6">
           <span className="text-2xl">⚠</span>
         </div>
 
-        <h2 className="font-display text-2xl font-bold text-terminal-text mb-3">
-          Something went wrong
+        <h2 className="text-2xl font-bold text-brand-text mb-3">
+          Failed to load domains
         </h2>
-
-        <p className="text-terminal-muted text-sm max-w-md mb-2">
-          Could not load expiring domains. This usually means the ENS subgraph
-          is temporarily unavailable.
+        
+        <p className="text-brand-muted max-w-md mb-6">
+          We had trouble fetching the latest expiring domains from the ENS subgraph.
         </p>
 
-        {/* Show error detail in dev */}
         {process.env.NODE_ENV === 'development' && (
-          <pre className="text-xs text-terminal-premium bg-terminal-surface border border-terminal-border rounded-lg p-4 mt-4 mb-6 max-w-lg overflow-auto text-left">
+          <pre className="text-left bg-[#0a0a0f] text-red-400 p-4 rounded text-xs overflow-auto max-w-2xl w-full mb-6">
             {error.message}
-            {error.digest && `\nDigest: ${error.digest}`}
           </pre>
         )}
 
         <div className="flex gap-4 mt-6">
           <button
             onClick={reset}
-            className="px-6 py-2 text-sm bg-terminal-accent text-white rounded hover:bg-terminal-accent/80 transition-colors"
+            className="px-6 py-2 text-sm bg-brand-yellow text-brand-dark rounded-full font-medium hover:bg-opacity-90 transition-colors"
           >
             Try again
           </button>
@@ -51,7 +48,7 @@ export default function Error({
             href="https://thegraph.com/explorer/subgraphs/5XqPmWe6gjyrJtFn9cLy237i4cWw2j9HcUJEXsP5qGtH"
             target="_blank"
             rel="noopener noreferrer"
-            className="px-6 py-2 text-sm border border-terminal-border text-terminal-muted rounded hover:text-terminal-text hover:border-terminal-accent transition-colors"
+            className="px-6 py-2 text-sm border border-brand-surface-light text-brand-muted rounded-full hover:text-brand-text hover:border-brand-yellow transition-colors"
           >
             Check subgraph status ↗
           </a>
