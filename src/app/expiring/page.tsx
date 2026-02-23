@@ -8,6 +8,9 @@ interface PageProps {
     phase?: string
     minLen?: string
     maxLen?: string
+    expiresIn?: string
+    englishOnly?: string
+    hideEmoji?: string
   }>
 }
 
@@ -20,6 +23,11 @@ export default async function ExpiringPage({ searchParams }: PageProps) {
 
   const minLength = params.minLen ? parseInt(params.minLen) : undefined
   const maxLength = params.maxLen ? parseInt(params.maxLen) : undefined
+  const expiresWithinDays = params.expiresIn
+    ? parseInt(params.expiresIn)
+    : undefined
+  const englishOnly = params.englishOnly === '1'
+  const hideEmojiDomains = params.hideEmoji === '1'
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-8">
@@ -85,6 +93,9 @@ export default async function ExpiringPage({ searchParams }: PageProps) {
           activePhase={phase}
           minLength={minLength}
           maxLength={maxLength}
+          expiresWithinDays={expiresWithinDays}
+          englishOnly={englishOnly}
+          hideEmojiDomains={hideEmojiDomains}
         />
       </Suspense>
     </div>
