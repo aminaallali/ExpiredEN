@@ -4,29 +4,40 @@ import { useEffect, useRef } from 'react'
 import { useExpiringDomains } from '@/hooks/useExpiringDomains'
 import { ExpiryPhase } from '@/types/ens'
 import DomainRow from './DomainRow'
+import ExpiryBadge from './ExpiryBadge'
 import EmptyState from '@/components/ui/EmptyState'
 import Spinner from '@/components/ui/Spinner'
-import { formatExpiryDate, getDaysInGrace } from '@/utils/expiry'
+import { formatExpiryDate } from '@/utils/expiry'
 import { truncateAddress, ensAppUrl, etherscanUrl } from '@/utils/ens'
-
-const COLUMNS = ['Domain', 'Length', 'Type', 'Expired', 'Status', 'Owner', 'Action']
 
 interface Props {
   phase: ExpiryPhase
   minLength?: number
   maxLength?: number
-  expiresWithinDays?: number
+  maxDaysLeft?: number
   englishOnly?: boolean
   hideEmojiDomains?: boolean
+  sortDirection?: 'asc' | 'desc'
 }
+
+const COLUMNS = [
+  { label: 'Domain', className: 'min-w-[160px]' },
+  { label: 'Length', className: 'min-w-[60px]' },
+  { label: 'Type', className: 'min-w-[60px] hidden lg:table-cell' },
+  { label: 'Expired', className: 'min-w-[100px] hidden md:table-cell' },
+  { label: 'Status', className: 'min-w-[120px]' },
+  { label: 'Owner', className: 'min-w-[120px] hidden lg:table-cell' },
+  { label: 'Action', className: 'min-w-[80px]' },
+]
 
 export default function DomainsTable({
   phase,
   minLength,
   maxLength,
-  expiresWithinDays,
+  maxDaysLeft,
   englishOnly,
   hideEmojiDomains,
+  sortDirection = 'asc',
 }: Props) {
   const bottomRef = useRef<HTMLDivElement>(null)
 
@@ -41,12 +52,12 @@ export default function DomainsTable({
     phase,
     minLength,
     maxLength,
-    expiresWithinDays,
+    maxDaysLeft,
     englishOnly,
     hideEmojiDomains,
+    sortDirection,
   })
 
-  // Infinite scroll
   useEffect(() => {
     const observer = new IntersectionObserver(
       (entries) => {
@@ -56,8 +67,12 @@ export default function DomainsTable({
       },
       { threshold: 0.1 }
     )
-    if (bottomRef.current) observer.observe(bottomRef.current)
-    return () => observer.disconnect()
+    const el = bottomRef.current
+    if (el) observer.observe(el)
+    return () => {
+      if (el) observer.unobserve(el)
+      observer.disconnect()
+    }
   }, [hasNextPage, isFetchingNextPage, fetchNextPage])
 
   const domains = data?.pages.flatMap((p) => p.domains) ?? []
@@ -84,7 +99,7 @@ export default function DomainsTable({
     <div>
       <div className="rounded border border-terminal-border bg-terminal-surface/30 px-3 py-2 text-xs text-terminal-muted mb-3">
         Showing {domains.length.toLocaleString()} domains
-        {hasNextPage && ' (scroll for more)'}
+        {hasNextPage && ' — scroll for more'}
       </div>
 
       {/* Mobile cards */}
@@ -92,9 +107,9 @@ export default function DomainsTable({
         {domains.map((domain) => (
           <div
             key={domain.id}
-            className="rounded border border-terminal-border bg-terminal-surface p-3 animate-in"
+            className="rounded-lg border border-terminal-border bg-terminal-surface p-3 animate-in"
           >
-            <div className="flex items-start justify-between">
+            <div className="flex items-start justify-between gap-2">
               <a
                 href={ensAppUrl(domain.name)}
                 target="_blank"
@@ -103,36 +118,24 @@ export default function DomainsTable({
               >
                 {domain.name}
               </a>
-              <span className="text-xs text-terminal-muted ml-2 shrink-0">
+              <span className="text-xs text-terminal-muted shrink-0 bg-terminal-bg px-2 py-0.5 rounded">
                 {domain.characterCount} chars
               </span>
             </div>
+
             <div className="mt-2 flex flex-wrap items-center gap-2">
-              {domain.phase === 'grace' && (
-                <span className="text-xs px-2 py-0.5 rounded bg-terminal-grace/10 text-terminal-grace border border-terminal-grace/30">
-                  {getDaysInGrace(domain.expiryDate)}d in grace
-                </span>
-              )}
-              {domain.phase === 'premium' && (
-                <span className="text-xs px-2 py-0.5 rounded bg-terminal-premium/10 text-terminal-premium border border-terminal-premium/30">
-                  {domain.daysUntilAvailable}d until free
-                </span>
-              )}
-              {domain.phase === 'available' && (
-                <span className="text-xs px-2 py-0.5 rounded bg-terminal-available/10 text-terminal-available border border-terminal-available/30">
-                  Available
-                </span>
-              )}
+              <ExpiryBadge domain={domain} />
               <span className="text-xs text-terminal-muted">
-                {formatExpiryDate(domain.expiryDate)}
+                Expired {formatExpiryDate(domain.expiryDate)}
               </span>
             </div>
-            <div className="mt-2 flex items-center justify-between">
+
+            <div className="mt-3 flex items-center justify-between pt-2 border-t border-terminal-border">
               <a
                 href={etherscanUrl(domain.owner)}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-xs font-mono text-terminal-muted hover:text-terminal-text"
+                className="text-xs font-mono text-terminal-muted hover:text-terminal-text transition-colors"
               >
                 {truncateAddress(domain.owner)}
               </a>
@@ -140,7 +143,7 @@ export default function DomainsTable({
                 href={ensAppUrl(domain.name)}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-xs px-2 py-1 border border-terminal-accent/40 text-terminal-accent rounded hover:bg-terminal-accent/10"
+                className="text-xs px-3 py-1 border border-terminal-accent/40 text-terminal-accent rounded hover:bg-terminal-accent/10 transition-colors"
               >
                 {domain.phase === 'available' ? 'Register' : 'View'}
               </a>
@@ -150,20 +153,27 @@ export default function DomainsTable({
       </div>
 
       {/* Desktop table */}
-      <table className="hidden w-full border-collapse overflow-hidden rounded border border-terminal-border text-sm md:table">
-        <thead className="bg-terminal-surface text-left text-xs text-terminal-muted uppercase tracking-wider">
-          <tr>
-            {COLUMNS.map((col) => (
-              <th key={col} className="p-3 font-medium">{col}</th>
+      <div className="hidden md:block overflow-x-auto rounded-lg border border-terminal-border">
+        <table className="w-full border-collapse text-sm">
+          <thead className="bg-terminal-surface text-left text-xs text-terminal-muted uppercase tracking-wider">
+            <tr>
+              {COLUMNS.map((col) => (
+                <th
+                  key={col.label}
+                  className={`p-3 font-medium whitespace-nowrap ${col.className}`}
+                >
+                  {col.label}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {domains.map((domain, i) => (
+              <DomainRow key={domain.id} domain={domain} index={i} />
             ))}
-          </tr>
-        </thead>
-        <tbody>
-          {domains.map((domain, i) => (
-            <DomainRow key={domain.id} domain={domain} index={i} />
-          ))}
-        </tbody>
-      </table>
+          </tbody>
+        </table>
+      </div>
 
       {/* Infinite scroll trigger */}
       <div ref={bottomRef} className="py-8 flex justify-center">

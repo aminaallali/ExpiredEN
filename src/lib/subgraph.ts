@@ -4,12 +4,15 @@ import {
   FetchExpiringOptions,
   PageCursor,
 } from '@/types/ens'
-import { getPhaseWindow } from '@/utils/expiry'
+import {
+  getPhaseWindow,
+  GRACE_PERIOD_SECONDS,
+  PREMIUM_PERIOD_SECONDS,
+} from '@/utils/expiry'
 import { ENGLISH_WORDS } from '@/data/englishWords'
 
 const PAGE_SIZE = 100
 
-// All queries go through our own API route — API key stays server-side
 async function querySubgraph(query: string): Promise<SubgraphResponse> {
   const response = await fetch('/api/subgraph', {
     method: 'POST',
@@ -18,45 +21,47 @@ async function querySubgraph(query: string): Promise<SubgraphResponse> {
   })
 
   if (!response.ok) {
-    const err = await response.json().catch(() => ({ error: 'Unknown error' }))
+    const err = await response
+      .json()
+      .catch(() => ({ error: 'Unknown error' }))
     throw new Error(err.error || `Request failed: ${response.status}`)
   }
 
   return response.json()
 }
 
-// Use Extended_Pictographic to avoid matching ASCII digits/symbols.
-const EMOJI_REGEX = /\p{Extended_Pictographic}/u
-
 export async function fetchExpiringRegistrations({
   phase,
   cursor,
   minLength,
   maxLength,
-  expiresWithinDays,
+  maxDaysLeft,
   englishOnly,
   hideEmojiDomains,
+  sortDirection = 'asc',
 }: FetchExpiringOptions): Promise<{
   registrations: SubgraphRegistration[]
   nextCursor: PageCursor | null
 }> {
   const window = getPhaseWindow(phase)
+  const isAsc = sortDirection === 'asc'
 
-  // Cursor-based pagination using expiryDate_gte + id_gt
-  // This avoids skipping domains with duplicate timestamps
-  const cursorFilter = cursor
-    ? `expiryDate_gte: "${cursor.expiryDate}", id_gt: "${cursor.id}"`
-    : `expiryDate_gt: "${window.gt}"`
+  let whereClause: string
+
+  if (!cursor) {
+    whereClause = `expiryDate_gt: "${window.gt}", expiryDate_lt: "${window.lt}"`
+  } else if (isAsc) {
+    whereClause = `expiryDate_gte: "${cursor.expiryDate}", id_gt: "${cursor.id}", expiryDate_lt: "${window.lt}"`
+  } else {
+    whereClause = `expiryDate_gt: "${window.gt}", expiryDate_lte: "${cursor.expiryDate}", id_lt: "${cursor.id}"`
+  }
 
   const query = `{
     registrations(
       first: ${PAGE_SIZE}
       orderBy: expiryDate
-      orderDirection: asc
-      where: {
-        ${cursorFilter}
-        expiryDate_lt: "${window.lt}"
-      }
+      orderDirection: ${sortDirection}
+      where: { ${whereClause} }
     ) {
       id
       expiryDate
@@ -73,52 +78,57 @@ export async function fetchExpiringRegistrations({
 
   const json = await querySubgraph(query)
 
-  let results = json.data.registrations
+  const rawResults = json.data.registrations
+  let results = [...rawResults]
 
-  // Client-side filtering (subgraph can't filter by label-derived fields)
-  if (
-    minLength !== undefined ||
-    maxLength !== undefined ||
-    expiresWithinDays !== undefined ||
-    englishOnly ||
-    hideEmojiDomains
-  ) {
-    const now = Math.floor(Date.now() / 1000)
-    const maxExpiry =
-      expiresWithinDays !== undefined
-        ? now + expiresWithinDays * 24 * 60 * 60
-        : undefined
+  const now = Math.floor(Date.now() / 1000)
 
-    results = results.filter((reg) => {
-      const label = reg.domain.labelName?.toLowerCase() ?? ''
-      const len = label ? [...label].length : 0
+  results = results.filter((reg) => {
+    const label = reg.domain.labelName ?? ''
+    const len = label ? [...label].length : 0
 
-      if (minLength && len < minLength) return false
-      if (maxLength && len > maxLength) return false
-      if (maxExpiry && Number(reg.expiryDate) > maxExpiry) return false
+    if (minLength !== undefined && len < minLength) return false
+    if (maxLength !== undefined && len > maxLength) return false
 
-      if (hideEmojiDomains && EMOJI_REGEX.test(label)) return false
+    if (hideEmojiDomains && /\p{Extended_Pictographic}/u.test(label)) {
+      return false
+    }
 
-      if (englishOnly) {
-        if (!ENGLISH_WORDS.has(label)) return false
+    if (englishOnly && !ENGLISH_WORDS.has(label.toLowerCase())) {
+      return false
+    }
+
+    if (maxDaysLeft !== undefined) {
+      const expiry = Number(reg.expiryDate)
+
+      if (phase === 'grace') {
+        const graceEnds = expiry + GRACE_PERIOD_SECONDS
+        const daysLeft = Math.ceil((graceEnds - now) / 86400)
+        if (daysLeft > maxDaysLeft) return false
+      } else if (phase === 'premium') {
+        const availableAt =
+          expiry + GRACE_PERIOD_SECONDS + PREMIUM_PERIOD_SECONDS
+        const daysLeft = Math.ceil((availableAt - now) / 86400)
+        if (daysLeft > maxDaysLeft) return false
       }
+    }
 
-      return true
-    })
-  }
+    return true
+  })
 
-  // Build cursor from the last raw item (before filtering)
-  // We use the unfiltered last item so pagination doesn't miss pages
-  const rawLast = json.data.registrations[json.data.registrations.length - 1]
+  const rawLast = rawResults[rawResults.length - 1]
   const nextCursor: PageCursor | null =
-    json.data.registrations.length === PAGE_SIZE && rawLast
+    rawResults.length === PAGE_SIZE && rawLast
       ? { expiryDate: rawLast.expiryDate, id: rawLast.id }
       : null
 
   return { registrations: results, nextCursor }
 }
 
-async function countPhaseRegistrations(gt: string, lt: string): Promise<number> {
+async function countPhaseRegistrations(
+  gt: string,
+  lt: string
+): Promise<number> {
   let total = 0
   let lastId = ''
 
@@ -147,7 +157,6 @@ async function countPhaseRegistrations(gt: string, lt: string): Promise<number> 
 
     lastId = batch[batch.length - 1].id
 
-    // Safety: cap at 50 iterations (50,000 domains) to prevent infinite loops
     if (total >= 50000) break
   }
 

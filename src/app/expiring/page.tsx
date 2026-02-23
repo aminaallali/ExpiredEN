@@ -1,31 +1,40 @@
 import { Suspense } from 'react'
 import { PhaseTabs } from '@/components/expiring/PhaseTabs'
 import { StatsBar } from '@/components/expiring/StatsBar'
-import { ExpiryPhase } from '@/types/ens'
+import { ExpiryPhase, SortOption } from '@/types/ens'
 
 interface PageProps {
-  searchParams: {
+  searchParams: Promise<{
     phase?: string
     minLen?: string
     maxLen?: string
-    expiresIn?: string
+    maxDays?: string
     englishOnly?: string
     hideEmoji?: string
-  }
+    sort?: string
+  }>
 }
 
-export default function ExpiringPage({ searchParams }: PageProps) {
-  const phase = (['grace', 'premium', 'available'].includes(searchParams.phase ?? '')
-    ? searchParams.phase
-    : 'grace') as ExpiryPhase
+export default async function ExpiringPage({ searchParams }: PageProps) {
+  const params = await searchParams
 
-  const minLength = searchParams.minLen ? parseInt(searchParams.minLen) : undefined
-  const maxLength = searchParams.maxLen ? parseInt(searchParams.maxLen) : undefined
-  const expiresWithinDays = searchParams.expiresIn
-    ? parseInt(searchParams.expiresIn)
-    : undefined
-  const englishOnly = searchParams.englishOnly === '1'
-  const hideEmojiDomains = searchParams.hideEmoji === '1'
+  const phase = (
+    ['grace', 'premium', 'available'].includes(params.phase ?? '')
+      ? params.phase
+      : 'grace'
+  ) as ExpiryPhase
+
+  const minLength = params.minLen ? parseInt(params.minLen) : undefined
+  const maxLength = params.maxLen ? parseInt(params.maxLen) : undefined
+  const maxDaysLeft = params.maxDays ? parseInt(params.maxDays) : undefined
+  const englishOnly = params.englishOnly === '1'
+  const hideEmojiDomains = params.hideEmoji === '1'
+
+  const sort = (
+    ['ending-soon', 'most-time'].includes(params.sort ?? '')
+      ? params.sort
+      : 'ending-soon'
+  ) as SortOption
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-8">
@@ -45,10 +54,10 @@ export default function ExpiringPage({ searchParams }: PageProps) {
         </p>
       </div>
 
-      {/* Stats bar — wrapped in Suspense because it fetches data client-side */}
+      {/* Stats bar */}
       <Suspense
         fallback={
-          <div className="grid grid-cols-3 gap-4 mb-6">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
             {[1, 2, 3].map((i) => (
               <div
                 key={i}
@@ -61,19 +70,21 @@ export default function ExpiringPage({ searchParams }: PageProps) {
         <StatsBar activePhase={phase} />
       </Suspense>
 
-      {/* Phase tabs + filters + table — Suspense required for useSearchParams */}
+      {/* Tabs + filters + table */}
       <Suspense
         fallback={
           <div>
             <div className="flex gap-0 border-b border-terminal-border mb-6">
-              {['Grace Period', 'Premium Auction', 'Available'].map((label) => (
-                <div
-                  key={label}
-                  className="px-6 py-3 text-sm text-terminal-muted"
-                >
-                  {label}
-                </div>
-              ))}
+              {['Grace Period', 'Premium Auction', 'Available'].map(
+                (label) => (
+                  <div
+                    key={label}
+                    className="px-6 py-3 text-sm text-terminal-muted"
+                  >
+                    {label}
+                  </div>
+                )
+              )}
             </div>
             <div className="space-y-2">
               {Array.from({ length: 10 }).map((_, i) => (
@@ -91,9 +102,10 @@ export default function ExpiringPage({ searchParams }: PageProps) {
           activePhase={phase}
           minLength={minLength}
           maxLength={maxLength}
-          expiresWithinDays={expiresWithinDays}
+          maxDaysLeft={maxDaysLeft}
           englishOnly={englishOnly}
           hideEmojiDomains={hideEmojiDomains}
+          sort={sort}
         />
       </Suspense>
     </div>
